@@ -21,34 +21,42 @@ def filter_labels(x):
     return [key for key in x.keys() if key in config['labels']]
 
 
-def save_collected(save_path, df):
-    df.to_csv(save_path)
+def discard_other_labels(source_file, source='ptb'):
+    if source == 'ptb':
+        # load and convert annotation data
+        Y = pd.read_csv(source_file, index_col='ecg_id')
+        Y.scp_codes = Y.scp_codes.apply(lambda x: ast.literal_eval(x))
+        # filter needed labels
+        Y['labels'] = Y.scp_codes.apply(filter_labels)
+        Y['labels'] = pd.Series([item for sublist in list(Y['labels']) for item in sublist])
+        Y = Y[Y['labels'].str.len() != 0]
+        Y = Y[Y['labels'].notna()]
+        # adding source label '0'
+        Y['source'] = 0
+    return Y
 
 
-# load and convert annotation data
-Y = pd.read_csv(config['path']+'ptbxl_database.csv', index_col='ecg_id')
-Y.scp_codes = Y.scp_codes.apply(lambda x: ast.literal_eval(x))
+def save_per_label(Y, collected_datasets_path):
+    for label in set(Y['labels']):
+        sub_df = Y[Y['labels'] == label]
+        sub_df.to_csv(collected_datasets_path + '{}_subdataset.csv'.format(label))
 
-# filter needed labels
-Y['labels'] = Y.scp_codes.apply(filter_labels)
-Y['labels'] = pd.Series([item for sublist in list(Y['labels']) for item in sublist])
-Y = Y[Y['labels'].str.len() != 0]
-Y = Y[Y['labels'].notna()]
 
-# Load raw signal data
-X = load_raw_data(Y, config['sampling_rate'], config['path'])
+labeled_df = discard_other_labels(config['ptb_path']+'ptbxl_database.csv', source='ptb')
+save_per_label(labeled_df, config['collected_datasets_path'])
+
 
 """
-# save sub-database 
-Y.to_csv(config['collected_datasets_path'] + 'sub_ptbxl_database.csv')
-
 # check number of instances
 stat = json.loads(Y['labels'].value_counts().to_json())
 with open(path + 'sub_ptbxl_stat.json', 'w') as fout:
     json.dump(stat, fout, indent=4)
 """
 
-
-
-
+"""
+# Load raw signal data
+# i.e. for 'CRBBB' label
+our_label_df = pd.read_csv(config['collected_datasets_path']+'CRBBB_subdataset.csv', index_col='ecg_id')
+X = load_raw_data(our_label_df, config['sampling_rate'], config['ptb_path'])
+"""
 
