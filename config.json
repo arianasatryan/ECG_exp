@@ -1,0 +1,14 @@
+{
+    "path": "/home/lab6/Desktop/COLLECTED_DS/ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.1/",
+    "collected_datasets_path": "/home/lab6/Desktop/COLLECTED_DS/",
+    "sampling_rate": 100,
+    "labels": [
+        "1AVB",
+        "CRBBB",
+        "CLBBB",
+        "STACH",
+        "SBRAD",
+        "AFIB",
+        "SR"
+    ]
+}
