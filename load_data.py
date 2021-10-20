@@ -9,6 +9,8 @@ import random
 with open('config.json', 'r')as fin:
     config = json.load(fin)
 
+SEED = 1
+
 
 def load_raw_data(df, sampling_rate, path):
     if sampling_rate == 100:
@@ -53,7 +55,7 @@ def get_train_test_split(label):
     needed_test_size = math.floor(len(Y) * 0.2)
 
     if needed_test_size < len(trusted_df):
-        random.seed(42)
+        random.seed(SEED)
         test_indexes = random.sample(range(len(trusted_df)), needed_test_size)
         remaining_indexes = list(set(list(range(len(trusted_df)))) - set(test_indexes))
 
@@ -61,7 +63,7 @@ def get_train_test_split(label):
         y_train = pd.concat([trusted_df.iloc[remaining_indexes, :], not_trusted_df])
 
     else:
-        random.seed(42)
+        random.seed(SEED)
         test_indexes = random.sample(range(len(not_trusted_df)), needed_test_size - len(trusted_df))
         remaining_indexes = list(set(list(range(len(not_trusted_df)))) - set(test_indexes))
 
@@ -71,8 +73,10 @@ def get_train_test_split(label):
     # adding SR examples
     sr_df = pd.read_csv(config['collected_datasets_path'] + 'SR_subdataset.csv')
     trusted_sr_df = sr_df[sr_df['strat_fold'].isin(trusted_folds)]
+    random.seed(SEED)
     test_indexes = random.sample(range(len(trusted_sr_df)), y_test.shape[0])
     remaining_indexes = list(set(list(range(len(sr_df)))) - set(test_indexes))
+    random.seed(SEED)
     train_indexes = random.sample(remaining_indexes, y_train.shape[0])
 
     y_test = pd.concat([y_test, sr_df.iloc[test_indexes, :]])
