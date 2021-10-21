@@ -91,6 +91,17 @@ def get_train_test_split(label):
     return x_train, x_test, y_train["labels"], y_test["labels"]
 
 
+def get_train_val_test_split(label):
+    x_train, x_test, y_train, y_test = get_train_test_split(label)
+
+    indices = np.random.RandomState(seed=SEED).permutation(x_train.shape[0])
+    needed_val_size = math.floor(len(x_train) * 0.2)
+    val_idx, training_idx = indices[:needed_val_size], indices[needed_val_size:]
+    x_train, x_val = x_train[training_idx, :], x_train[val_idx, :]
+    y_train, y_val = y_train.iloc[training_idx], y_train.iloc[val_idx]
+
+    return x_train, x_val,  x_test, y_train, y_val, y_test
+
 """
 # check number of instances
 stat = json.loads(Y['labels'].value_counts().to_json())
@@ -109,5 +120,6 @@ save_per_label(labeled_df, config['collected_datasets_path'])
 # Get splits for given label
 # i.e. for 'CRBBB' label
 X_train, X_test, y_train, y_test = get_train_test_split('CRBBB')
+X_train, X_val, X_test, y_train, y_val, y_test = get_train_val_test_split('CRBBB')
 """
 

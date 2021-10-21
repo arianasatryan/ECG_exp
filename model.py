@@ -2,6 +2,7 @@ from tensorflow.keras.layers import (
     Input, Conv1D, MaxPooling1D, Dropout, BatchNormalization, Activation, Add, Flatten, Dense)
 from tensorflow.keras.models import Model
 import numpy as np
+import tensorflow as tf
 
 
 class ResidualUnit(object):
