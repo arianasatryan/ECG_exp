@@ -4,7 +4,7 @@ from tensorflow.keras.callbacks import (ModelCheckpoint, TensorBoard, ReduceLROn
 from tensorflow.keras.metrics import BinaryAccuracy, Recall, Precision, SensitivityAtSpecificity
 from model import get_model
 import tensorflow as tf
-from load_data import get_train_val_test_split, config
+from load_data import train_val_test_split, config
 
 label = config['label']
 
@@ -21,13 +21,11 @@ if __name__ == "__main__":
                                min_delta=0.00001)]
 
     #add data spliting
-    X_train, X_val,  X_test, y_train, y_val, y_test = get_train_val_test_split(label)
-    y_train = tf.one_hot(y_train, depth=2)
-    y_val = tf.one_hot(y_val, depth=2)
+    X_train, X_val,  X_test, y_train, y_val, y_test = train_val_test_split()
 
     # If you are continuing an interrupted section, uncomment line bellow:
     #   model = keras.models.load_model(PATH_TO_PREV_MODEL, compile=False)
-    model = get_model(2)
+    model = get_model(7)
     model.compile(loss=loss, optimizer=opt, metrics=[BinaryAccuracy(), Recall(), Precision()])
     # Create log
     callbacks += [TensorBoard(log_dir='./logs', write_graph=False),
