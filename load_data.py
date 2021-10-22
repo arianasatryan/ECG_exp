@@ -4,7 +4,7 @@ import wfdb
 import ast
 import json
 import math
-import random
+import tensorflow as tf
 
 with open('config.json', 'r')as fin:
     config = json.load(fin)
@@ -25,6 +25,50 @@ def filter_labels(x):
     return [key for key in x.keys() if key in config['labels']]
 
 
+def train_val_test_split(test_portion=0.2, val_portion=0.2):
+    labels = config['labels']
+    Y = pd.read_csv(config['ptb_path'] + 'ptbxl_database.csv')
+    Y.scp_codes = Y.scp_codes.apply(lambda x: ast.literal_eval(x))
+    Y['labels'] = Y.scp_codes.apply(filter_labels)
+    Y['labels'] = pd.Series([item for sublist in list(Y['labels']) for item in sublist])
+    Y = Y[Y['labels'].str.len() != 0]
+    Y = Y[Y['labels'].notna()]
+
+    trusted_folds = [9, 10]
+    trusted_df = Y[Y['strat_fold'].isin(trusted_folds)]
+    not_trusted_df = Y[~Y['strat_fold'].isin(trusted_folds)]
+    needed_test_size = math.floor(len(Y) * test_portion)
+
+    # splitting train and test
+    indices = np.random.RandomState(seed=SEED).permutation(trusted_df.shape[0])
+    test_idx, training_idx = indices[:needed_test_size], indices[needed_test_size:]
+    y_test = trusted_df.iloc[test_idx, :]
+    y_train = pd.concat([trusted_df.iloc[training_idx, :], not_trusted_df])
+
+    x_train = load_raw_data(y_train, config['sampling_rate'], config['ptb_path'])
+    x_test = load_raw_data(y_test, config['sampling_rate'], config['ptb_path'])
+
+    # splitting train and validation
+    indices = np.random.RandomState(seed=SEED).permutation(x_train.shape[0])
+    needed_val_size = math.floor(len(x_train) * val_portion)
+    val_idx, training_idx = indices[:needed_val_size], indices[needed_val_size:]
+    x_train, x_val = x_train[training_idx, :], x_train[val_idx, :]
+    y_train, y_val = y_train.iloc[training_idx], y_train.iloc[val_idx]
+
+    # mapping labels into integers
+    y_train["labels"].replace({labels[i]: i for i in range(0, len(labels))}, inplace=True)
+    y_val["labels"].replace({labels[i]: i for i in range(0, len(labels))}, inplace=True)
+    y_test["labels"].replace({labels[i]: i for i in range(0, len(labels))}, inplace=True)
+
+    # one-hot encoding labels
+    y_train_labels = tf.one_hot(y_train['labels'], depth=len(labels))
+    y_val_labels = tf.one_hot(y_val['labels'], depth=len(labels))
+    y_test_labels = tf.one_hot(y_test['labels'], depth=len(labels))
+
+    return x_train, x_val, x_test, y_train_labels, y_val_labels, y_test_labels
+
+
+"""
 def discard_other_labels(source_file, source='ptb'):
     if source == 'ptb':
         # load and convert annotation data
@@ -101,6 +145,7 @@ def get_train_val_test_split(label):
     y_train, y_val = y_train.iloc[training_idx], y_train.iloc[val_idx]
 
     return x_train, x_val,  x_test, y_train, y_val, y_test
+"""
 
 """
 # check number of instances
