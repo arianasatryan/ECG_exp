@@ -1,13 +1,13 @@
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import (ModelCheckpoint, TensorBoard, ReduceLROnPlateau,
                                         CSVLogger, EarlyStopping)
-from tensorflow.keras.metrics import BinaryAccuracy, Recall, Precision, SensitivityAtSpecificity
+from tensorflow.keras.metrics import CategoricalAccuracy, Recall, Precision
 from model import get_model
-from load_data import train_val_test_split
+from load_data import train_val_test_split, config
 
 
 if __name__ == "__main__":
-    loss = 'binary_crossentropy'
+    loss = 'categorical_crossentropy'
     lr = 0.001
     batch_size = 64
     opt = Adam(lr)
@@ -23,8 +23,8 @@ if __name__ == "__main__":
 
     # If you are continuing an interrupted section, uncomment line bellow:
     #   model = keras.models.load_model(PATH_TO_PREV_MODEL, compile=False)
-    model = get_model(7)
-    model.compile(loss=loss, optimizer=opt, metrics=[BinaryAccuracy(), Recall(), Precision()])
+    model = get_model(len(config['labels']))
+    model.compile(loss=loss, optimizer=opt, metrics=[CategoricalAccuracy(), Recall(), Precision()])
     # Create log
     callbacks += [TensorBoard(log_dir='./logs', write_graph=False),
                   CSVLogger('training.log', append=False)]  # Change append to true if continuing training
@@ -35,7 +35,7 @@ if __name__ == "__main__":
     history = model.fit(X_train, y_train,
                         validation_data=(X_val, y_val),
                         batch_size=batch_size,
-                        epochs=70,
+                        epochs=30,
                         initial_epoch=0,  # If you are continuing a interrupted section change here
                         callbacks=callbacks,
                         verbose=1)
