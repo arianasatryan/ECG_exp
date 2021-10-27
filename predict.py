@@ -9,9 +9,11 @@ loss = 'categorical_crossentropy'
 lr = 0.001
 opt = Adam(lr)
 
-X_train, X_val,  X_test, y_train, y_val, y_test = train_val_test_split()
 
-model = load_model(path_to_model, compile=False)
-model.compile(loss='binary_crossentropy', optimizer=Adam())
+def predict():
+    X_train, X_val,  X_test, y_train, y_val, y_test = train_val_test_split()
 
-y_score = model.predict(X_train)
+    model = load_model(path_to_model, compile=False)
+    model.compile(loss='binary_crossentropy', optimizer=Adam())
+    y_pred = model.predict(X_test)
+    return y_pred
