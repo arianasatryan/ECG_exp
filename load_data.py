@@ -4,6 +4,7 @@ import wfdb
 import ast
 import json
 import math
+import os
 import tensorflow as tf
 
 with open('config.json', 'r')as fin:
@@ -68,6 +69,40 @@ def train_val_test_split(test_portion=0.2, val_portion=0.2):
     y_test_labels = tf.one_hot(y_test['labels'], depth=len(labels))
 
     return x_train, x_val, x_test, y_train_labels, y_val_labels, y_test_labels
+
+
+def map_label(label, source='tis'):
+    # if source='tis' the label is tis_code, else the label is ptb label
+    map_df = pd.read_csv(config['pathology_mapping_file'])
+    map_df['ТИС'] = map_df['ТИС'].apply(lambda x: str(x).split(','))
+    if source == 'tis':
+        return map_df[map_df['ТИС'].apply(lambda x: label in x)]['PTB-XL']
+    return map_df[map_df['PTB-XL'] == label]['ТИС']
+
+
+def load_record(file):
+    row_data = []
+    file_df = pd.read_csv(file, skiprows=10, sep=',')
+    file_df.columns = file_df.columns.str.strip()
+    for lead in config['leads_order']:
+        row_data.extend(file_df[lead])
+    return np.array(row_data)
+
+
+def tis_get_dataset():
+    map_df = pd.read_csv(config['pathology_mapping_file'])
+    map_df['ТИС'] = map_df['ТИС'].apply(lambda x: str(x).split(','))
+
+    files = [config['tis_path'] + file for file in os.listdir(config['tis_path']) if file.endswith('csv')]
+    X = []
+    Y = []
+    for file in files:
+        file_df = pd.read_csv(file, nrows=5, sep=':')
+        tis_codes = ast.literal_eval(file_df.iloc[4][1].strip())
+        ptb_codes = [list(map_label(tis_code))[0] for tis_code in tis_codes if list(map_label(tis_code))]
+        Y.append(ptb_codes)
+        X.append(load_record(file))
+    return X, Y
 
 
 """
