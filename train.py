@@ -40,4 +40,4 @@ if __name__ == "__main__":
                         callbacks=callbacks,
                         verbose=1)
     # Save final result
-    model.save("./models/final_model.hdf5")
+    model.save("./final_model.hdf5")
