@@ -1,13 +1,13 @@
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import (ModelCheckpoint, TensorBoard, ReduceLROnPlateau,
                                         CSVLogger, EarlyStopping)
-from tensorflow.keras.metrics import CategoricalAccuracy, Recall, Precision
+from tensorflow.keras.metrics import Accuracy, Recall, Precision
 from model import get_model
 from load_data import train_val_test_split, config
 
 
 if __name__ == "__main__":
-    loss = 'categorical_crossentropy'
+    loss = 'binary_crossentropy'
     lr = 0.001
     batch_size = 64
     opt = Adam(lr)
@@ -24,13 +24,13 @@ if __name__ == "__main__":
     # If you are continuing an interrupted section, uncomment line bellow:
     #   model = keras.models.load_model(PATH_TO_PREV_MODEL, compile=False)
     model = get_model(len(config['labels']))
-    model.compile(loss=loss, optimizer=opt, metrics=[CategoricalAccuracy(), Recall(), Precision()])
+    model.compile(loss=loss, optimizer=opt, metrics=[Accuracy(), Recall(), Precision()])
     # Create log
     callbacks += [TensorBoard(log_dir='./logs', write_graph=False),
                   CSVLogger('training.log', append=False)]  # Change append to true if continuing training
     # Save the BEST and LAST model
-    callbacks += [ModelCheckpoint('./backup_model_last.hdf5'),
-                  ModelCheckpoint('./backup_model_best.hdf5', save_best_only=True)]
+    callbacks += [ModelCheckpoint('./multi_label_backup_model_last.hdf5'),
+                  ModelCheckpoint('./multi_label_backup_model_best.hdf5', save_best_only=True)]
     # Train neural network
     history = model.fit(X_train, y_train,
                         validation_data=(X_val, y_val),
@@ -40,4 +40,4 @@ if __name__ == "__main__":
                         callbacks=callbacks,
                         verbose=1)
     # Save final result
-    model.save("./final_model.hdf5")
+    model.save("./multi_label_final_model.hdf5")
