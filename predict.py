@@ -25,7 +25,7 @@ def predict():
 
     metrics = get_metrics(y_test_labels, y_pred_labels)
     with open('./quality.json', 'w')as f:
-        json.dump(metrics, f)
+        json.dump(metrics, f, indent=4)
 
     return y_pred
 
