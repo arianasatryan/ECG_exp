@@ -31,11 +31,8 @@ def train_val_test_split(test_portion=0.2, val_portion=0.2):
     Y = pd.read_csv(config['ptb_path'] + 'ptbxl_database.csv')
     Y.scp_codes = Y.scp_codes.apply(lambda x: ast.literal_eval(x))
 
-    # selecting config labels and  filtering out multi-label cases 
+    # selecting config labels
     Y['labels'] = Y.scp_codes.apply(filter_labels)
-    Y = Y[Y['labels'].apply(lambda x: len(x)==1)]
-    Y['labels'] = Y['labels'].explode()
-
 
     trusted_folds = [9, 10]
     trusted_df = Y[Y['strat_fold'].isin(trusted_folds)]
