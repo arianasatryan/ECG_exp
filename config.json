@@ -2,7 +2,8 @@
     "ptb_path": "/path/to/ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.1/",
     "tis_path": "/path/to/technion_ecg_data/",
     "pathology_mapping_file": "/path/to/pathology_mapping.csv",
-    "path_to_model": "path/to/final_model.hdf5",
+    "path_to_multi_class_model": "/path/to/final_model.hdf5",
+    "path_to_multi_label_model": "/path/to/multi_label_final_model.hdf5",
     "leads_order": ["I", "II", "III", "aVL", "aVR", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"],
     "sampling_rate": 500,
     "labels": [
