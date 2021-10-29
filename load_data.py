@@ -5,7 +5,7 @@ import ast
 import json
 import math
 import os
-import tensorflow as tf
+from sklearn.preprocessing import MultiLabelBinarizer
 
 with open('config.json', 'r')as fin:
     config = json.load(fin)
@@ -33,6 +33,7 @@ def train_val_test_split(test_portion=0.2, val_portion=0.2):
 
     # selecting config labels
     Y['labels'] = Y.scp_codes.apply(filter_labels)
+    Y = Y[Y['labels'].apply(lambda x: len(x)!=0)]
 
     trusted_folds = [9, 10]
     trusted_df = Y[Y['strat_fold'].isin(trusted_folds)]
@@ -55,15 +56,12 @@ def train_val_test_split(test_portion=0.2, val_portion=0.2):
     x_train, x_val = x_train[training_idx, :], x_train[val_idx, :]
     y_train, y_val = y_train.iloc[training_idx], y_train.iloc[val_idx]
 
-    # mapping labels into integers
-    y_train["labels"].replace({labels[i]: i for i in range(0, len(labels))}, inplace=True)
-    y_val["labels"].replace({labels[i]: i for i in range(0, len(labels))}, inplace=True)
-    y_test["labels"].replace({labels[i]: i for i in range(0, len(labels))}, inplace=True)
 
     # one-hot encoding labels
-    y_train_labels = tf.one_hot(y_train['labels'], depth=len(labels))
-    y_val_labels = tf.one_hot(y_val['labels'], depth=len(labels))
-    y_test_labels = tf.one_hot(y_test['labels'], depth=len(labels))
+    mlb = MultiLabelBinarizer(classes=config['labels'])
+    y_train_labels = mlb.fit_transform(y_train.labels)
+    y_val_labels = mlb.fit_transform(y_val.labels)
+    y_test_labels = mlb.fit_transform(y_test.labels)
 
     return x_train, x_val, x_test, y_train_labels, y_val_labels, y_test_labels
 
