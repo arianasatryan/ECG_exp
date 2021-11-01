@@ -22,7 +22,7 @@ def load_raw_data_ptb(df, path):
     return data
 
 
-def load_raw_data_tis(df, path, needed_length=5000, pad_mode='constrant'):
+def load_raw_data_tis(df, path, needed_length=5000, pad_mode='constant'):
     # considering that all of the files in df are sampled as config['sampling_rate']
     files = [path + file for file in list(df.filename)]
     X = []
@@ -55,7 +55,7 @@ def train_val_test_split(test_portion=0.2, val_portion=0.2):
 
     # selecting config labels
     Y['labels'] = Y.scp_codes.apply(filter_labels)
-    Y = Y[Y['labels'].apply(lambda x: len(x)!=0)]
+    Y = Y[Y['labels'].apply(lambda x: len(x) != 0)]
 
     trusted_folds = [9, 10]
     trusted_df = Y[Y['strat_fold'].isin(trusted_folds)]
@@ -111,13 +111,14 @@ def save_filtered():
     Y.scp_codes = Y.scp_codes.apply(lambda x: ast.literal_eval(x))
     Y['labels'] = Y.scp_codes.apply(lambda x: [key for key in x.keys() if key in config['labels']])
     Y = Y[Y['labels'].apply(lambda x: len(x) != 0)]
-    Y.to_csv('./ptbxl_database.csv')
+    Y.to_csv('./ptbxl_database.csv', index=False)
 
     # filter tis
     files = [file for file in os.listdir(config['tis_path'])if file.endswith('.csv')]
     i = 1
     info = []
     for file in files:
+        print(i)
         file_df = pd.read_csv(config['tis_path'] + file, nrows=5, sep=':')
         if int(file_df.iloc[0][1]) == config['sampling_rate']:
             tis_codes = ast.literal_eval(file_df.iloc[4][1].strip())
@@ -127,9 +128,10 @@ def save_filtered():
                 info.append({'filename': file, 'ptb_labels': ptb_labels, 'tis_codes': tis_codes})
         i += 1
     Y = pd.DataFrame(info)
-    Y.to_csv('./tis_database.csv')
+    Y.to_csv('./tis_database.csv', index=False)
 
 
+save_filtered()
 
 
 
