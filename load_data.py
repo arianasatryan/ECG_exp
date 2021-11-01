@@ -5,7 +5,7 @@ import ast
 import json
 import math
 import os
-import tensorflow as tf
+from sklearn.preprocessing import MultiLabelBinarizer
 
 with open('config.json', 'r')as fin:
     config = json.load(fin)
@@ -13,13 +13,36 @@ with open('config.json', 'r')as fin:
 SEED = 1
 
 
-def load_raw_data(df, sampling_rate, path):
-    if sampling_rate == 100:
+def load_raw_data_ptb(df, path):
+    if config['sampling_rate'] == 100:
         data = [wfdb.rdsamp(path+f) for f in df.filename_lr]
-    else:
+    elif config['sampling_rate'] == 500:
         data = [wfdb.rdsamp(path+f) for f in df.filename_hr]
     data = np.array([signal for signal, meta in data])
     return data
+
+
+def load_raw_data_tis(df, path, needed_length=5000, pad_mode='constrant'):
+    # considering that all of the files in df are sampled as config['sampling_rate']
+    files = [path + file for file in list(df.filename)]
+    X = []
+    for file in files:
+        row_data = []
+        file_df = pd.read_csv(file, skiprows=10, sep=',')
+        file_df.columns = file_df.columns.str.strip()
+        for lead in config['leads_order']:
+            if len(file_df[lead]) >= needed_length:
+                # truncating
+                lead_data = np.array(file_df[lead][:needed_length])
+            else:
+                # padding
+                lead_data = np.array(file_df[lead])
+                lead_data = np.pad(lead_data, (0, 5000 - lead_data.shape[0]), mode=pad_mode)
+            row_data.append(lead_data)
+        row_data = np.stack(row_data, axis=0)
+        row_data = np.transpose(row_data)
+        X.append(row_data)
+    return np.array(X)
 
 
 def filter_labels(x):
@@ -27,15 +50,12 @@ def filter_labels(x):
 
 
 def train_val_test_split(test_portion=0.2, val_portion=0.2):
-    labels = config['labels']
     Y = pd.read_csv(config['ptb_path'] + 'ptbxl_database.csv')
     Y.scp_codes = Y.scp_codes.apply(lambda x: ast.literal_eval(x))
 
-    # selecting config labels and  filtering out multi-label cases 
+    # selecting config labels
     Y['labels'] = Y.scp_codes.apply(filter_labels)
-    Y = Y[Y['labels'].apply(lambda x: len(x)==1)]
-    Y['labels'] = Y['labels'].explode()
-
+    Y = Y[Y['labels'].apply(lambda x: len(x)!=0)]
 
     trusted_folds = [9, 10]
     trusted_df = Y[Y['strat_fold'].isin(trusted_folds)]
@@ -48,8 +68,8 @@ def train_val_test_split(test_portion=0.2, val_portion=0.2):
     y_test = trusted_df.iloc[test_idx, :]
     y_train = pd.concat([trusted_df.iloc[training_idx, :], not_trusted_df])
 
-    x_train = load_raw_data(y_train, config['sampling_rate'], config['ptb_path'])
-    x_test = load_raw_data(y_test, config['sampling_rate'], config['ptb_path'])
+    x_train = load_raw_data_ptb(y_train, config['sampling_rate'], config['ptb_path'])
+    x_test = load_raw_data_ptb(y_test, config['sampling_rate'], config['ptb_path'])
 
     # splitting train and validation
     indices = np.random.RandomState(seed=SEED).permutation(x_train.shape[0])
@@ -58,128 +78,60 @@ def train_val_test_split(test_portion=0.2, val_portion=0.2):
     x_train, x_val = x_train[training_idx, :], x_train[val_idx, :]
     y_train, y_val = y_train.iloc[training_idx], y_train.iloc[val_idx]
 
-    # mapping labels into integers
-    y_train["labels"].replace({labels[i]: i for i in range(0, len(labels))}, inplace=True)
-    y_val["labels"].replace({labels[i]: i for i in range(0, len(labels))}, inplace=True)
-    y_test["labels"].replace({labels[i]: i for i in range(0, len(labels))}, inplace=True)
 
     # one-hot encoding labels
-    y_train_labels = tf.one_hot(y_train['labels'], depth=len(labels))
-    y_val_labels = tf.one_hot(y_val['labels'], depth=len(labels))
-    y_test_labels = tf.one_hot(y_test['labels'], depth=len(labels))
+    mlb = MultiLabelBinarizer(classes=config['labels'])
+    y_train_labels = mlb.fit_transform(y_train.labels)
+    y_val_labels = mlb.fit_transform(y_val.labels)
+    y_test_labels = mlb.fit_transform(y_test.labels)
 
     return x_train, x_val, x_test, y_train_labels, y_val_labels, y_test_labels
 
 
-def map_label(label, source='tis'):
+def map_labels(labels, source='tis'):
     # if source='tis' the label is tis_code, else the label is ptb label
     map_df = pd.read_csv(config['pathology_mapping_file'])
     map_df['ТИС'] = map_df['ТИС'].apply(lambda x: str(x).split(','))
     if source == 'tis':
-        return map_df[map_df['ТИС'].apply(lambda x: label in x)]['PTB-XL']
-    return map_df[map_df['PTB-XL'] == label]['ТИС']
-
-
-def load_record(file):
-    row_data = []
-    file_df = pd.read_csv(file, skiprows=10, sep=',')
-    file_df.columns = file_df.columns.str.strip()
-    for lead in config['leads_order']:
-        row_data.extend(file_df[lead])
-    return np.array(row_data)
-
-
-def tis_get_dataset():
-    map_df = pd.read_csv(config['pathology_mapping_file'])
-    map_df['ТИС'] = map_df['ТИС'].apply(lambda x: str(x).split(','))
-
-    files = [config['tis_path'] + file for file in os.listdir(config['tis_path']) if file.endswith('csv')]
-    X = []
-    Y = []
-    for file in files:
-        file_df = pd.read_csv(file, nrows=5, sep=':')
-        tis_codes = ast.literal_eval(file_df.iloc[4][1].strip())
-        ptb_codes = [list(map_label(tis_code))[0] for tis_code in tis_codes if list(map_label(tis_code))]
-        Y.append(ptb_codes)
-        X.append(load_record(file))
-    return X, Y
-
-
-"""
-def discard_other_labels(source_file, source='ptb'):
-    if source == 'ptb':
-        # load and convert annotation data
-        Y = pd.read_csv(source_file, index_col='ecg_id')
-        Y.scp_codes = Y.scp_codes.apply(lambda x: ast.literal_eval(x))
-        # filter needed labels
-        Y['labels'] = Y.scp_codes.apply(filter_labels)
-        Y['labels'] = pd.Series([item for sublist in list(Y['labels']) for item in sublist])
-        Y = Y[Y['labels'].str.len() != 0]
-        Y = Y[Y['labels'].notna()]
-        # adding source label '0'
-        Y['source'] = 0
-    return Y
-def save_per_label(Y, collected_datasets_path):
-    for label in set(Y['labels']):
-        sub_df = Y[Y['labels'] == label]
-        sub_df.to_csv(collected_datasets_path + '{}_subdataset.csv'.format(label))
-def get_train_test_split(label):
-    trusted_folds = [9, 10]
-    Y = pd.read_csv(config['collected_datasets_path'] + '{}_subdataset.csv'.format(label))
-    trusted_df = Y[Y['strat_fold'].isin(trusted_folds)]
-    not_trusted_df = Y[~Y['strat_fold'].isin(trusted_folds)]
-    needed_test_size = math.floor(len(Y) * 0.2)
-    if needed_test_size < len(trusted_df):
-        random.seed(SEED)
-        test_indexes = random.sample(range(len(trusted_df)), needed_test_size)
-        remaining_indexes = list(set(list(range(len(trusted_df)))) - set(test_indexes))
-        y_test = trusted_df.iloc[test_indexes, :]
-        y_train = pd.concat([trusted_df.iloc[remaining_indexes, :], not_trusted_df])
+        mapped = map_df[map_df['ТИС'].apply(lambda x: len(set(labels).intersection(x))) != 0]['PTB-XL']
+        mapped = mapped.dropna()
+        mapped_labels = list(mapped)
     else:
-        random.seed(SEED)
-        test_indexes = random.sample(range(len(not_trusted_df)), needed_test_size - len(trusted_df))
-        remaining_indexes = list(set(list(range(len(not_trusted_df)))) - set(test_indexes))
-        y_test = pd.concat([trusted_df, not_trusted_df.iloc[test_indexes, :]])
-        y_train = not_trusted_df.iloc[remaining_indexes, :]
-    # adding SR examples
-    sr_df = pd.read_csv(config['collected_datasets_path'] + 'SR_subdataset.csv')
-    trusted_sr_df = sr_df[sr_df['strat_fold'].isin(trusted_folds)]
-    random.seed(SEED)
-    test_indexes = random.sample(range(len(trusted_sr_df)), y_test.shape[0])
-    remaining_indexes = list(set(list(range(len(sr_df)))) - set(test_indexes))
-    random.seed(SEED)
-    train_indexes = random.sample(remaining_indexes, y_train.shape[0])
-    y_test = pd.concat([y_test, sr_df.iloc[test_indexes, :]])
-    y_train = pd.concat([y_train, sr_df.iloc[train_indexes, :]])
-    x_train = load_raw_data(y_train, config['sampling_rate'], config['ptb_path'])
-    x_test = load_raw_data(y_test, config['sampling_rate'], config['ptb_path'])
-    y_train["labels"].replace({"SR": 0, label: 1}, inplace=True)
-    y_test["labels"].replace({"SR": 0, label: 1}, inplace=True)
-    return x_train, x_test, y_train["labels"], y_test["labels"]
-def get_train_val_test_split(label):
-    x_train, x_test, y_train, y_test = get_train_test_split(label)
-    indices = np.random.RandomState(seed=SEED).permutation(x_train.shape[0])
-    needed_val_size = math.floor(len(x_train) * 0.2)
-    val_idx, training_idx = indices[:needed_val_size], indices[needed_val_size:]
-    x_train, x_val = x_train[training_idx, :], x_train[val_idx, :]
-    y_train, y_val = y_train.iloc[training_idx], y_train.iloc[val_idx]
-    return x_train, x_val,  x_test, y_train, y_val, y_test
-"""
+        mapped_labels = []
+        mapped = map_df[map_df['PTB-XL'].isin(labels)]['ТИС']
+        mapped = mapped.dropna()
+        for row in mapped:
+            mapped_labels.extend(list(row))
+    return mapped_labels
 
-"""
-# check number of instances
-stat = json.loads(Y['labels'].value_counts().to_json())
-with open(path + 'sub_ptbxl_stat.json', 'w') as fout:
-    json.dump(stat, fout, indent=4)
-# Load raw signal data
-# i.e. for 'CRBBB' label
-our_label_df = pd.read_csv(config['collected_datasets_path']+'CRBBB_subdataset.csv', index_col='ecg_id')
-X = load_raw_data(our_label_df, config['sampling_rate'], config['ptb_path'])
-# Separately save scv files for each label
-labeled_df = discard_other_labels(config['ptb_path']+'ptbxl_database.csv', source='ptb')
-save_per_label(labeled_df, config['collected_datasets_path'])
-# Get splits for given label
-# i.e. for 'CRBBB' label
-X_train, X_test, y_train, y_test = get_train_test_split('CRBBB')
-X_train, X_val, X_test, y_train, y_val, y_test = get_train_val_test_split('CRBBB')
-"""
+
+def save_filtered():
+    # filter ptb
+    Y = pd.read_csv(config['ptb_path'] + 'ptbxl_database.csv')
+    Y.scp_codes = Y.scp_codes.apply(lambda x: ast.literal_eval(x))
+    Y['labels'] = Y.scp_codes.apply(lambda x: [key for key in x.keys() if key in config['labels']])
+    Y = Y[Y['labels'].apply(lambda x: len(x) != 0)]
+    Y.to_csv('./ptbxl_database.csv')
+
+    # filter tis
+    files = [file for file in os.listdir(config['tis_path'])if file.endswith('.csv')]
+    i = 1
+    info = []
+    for file in files:
+        file_df = pd.read_csv(config['tis_path'] + file, nrows=5, sep=':')
+        if int(file_df.iloc[0][1]) == config['sampling_rate']:
+            tis_codes = ast.literal_eval(file_df.iloc[4][1].strip())
+            ptb_labels = map_labels(tis_codes, source='tis')
+            ptb_labels = [key for key in ptb_labels if key in config['labels']]
+            if ptb_labels:
+                info.append({'filename': file, 'ptb_labels': ptb_labels, 'tis_codes': tis_codes})
+        i += 1
+    Y = pd.DataFrame(info)
+    Y.to_csv('./tis_database.csv')
+
+
+
+
+
+
+
