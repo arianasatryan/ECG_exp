@@ -19,7 +19,7 @@ def predict(classification='multi-class'):
     model = load_model(model_path, compile=False)
 
     y_pred = model.predict(X_test)
-    y_test_labels = np.argmax(y_test, axis=1)
+    y_test_labels = np.argmax(y_test, axis=1) if classification == 'multi-class' y_test
     y_pred_labels = np.argmax(y_pred, axis=1) if classification == 'multi-class' else preprocessing(y_pred)
 
     metrics = get_metrics(y_test_labels, y_pred_labels, classification)
@@ -35,8 +35,8 @@ def get_metrics(y_test, y_pred, classification='multi-class'):
         conf_matrix = confusion_matrix(y_test, y_pred)
         with open('./{}_confusion_matrix.pickle'.format(experiment_name), 'wb')as f:
             pickle.dump(conf_matrix, f)
-    with open('./{}_metrics_per_label.txt'.format(experiment_name), 'w')as f:
-        f.write(classification_report(y_test, y_pred, target_names=label_names))
+        with open('./{}_metrics_per_label.txt'.format(experiment_name), 'w')as f:
+            f.write(classification_report(y_test, y_pred, target_names=label_names))
 
     return {'accuracy': accuracy_score(y_test, y_pred).round(3),
             'recall_macro': recall_score(y_test, y_pred, average="macro").round(3),
