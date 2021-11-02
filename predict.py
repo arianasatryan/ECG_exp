@@ -7,7 +7,7 @@ import numpy as np
 import json
 import pickle
 
-from load_data import train_val_test_split, config
+from load_data import train_val_test_split, config, get_tis_data
 
 path_to_model = config["path_to_model"]
 
@@ -17,13 +17,13 @@ opt = Adam(lr)
 
 
 def predict():
-    X_train, X_val,  X_test, y_train, y_val, y_test = train_val_test_split()
+    #X_train, X_val,  X_test, y_train, y_val, y_test = train_val_test_split()
+    X_test, y_test = get_tis_data(classification='multi-class')
 
     model = load_model(path_to_model, compile=False)
-    model.compile(loss='binary_crossentropy', optimizer=Adam())
-
+    
+    y_pred = model.predict(X_test, batch_size=16)
     y_test_labels = np.argmax(y_test, axis=1)
-    y_pred = model.predict(X_test)
     y_pred_labels = np.argmax(y_pred, axis=1)
 
     metrics = get_metrics(y_test_labels, y_pred_labels)
@@ -33,7 +33,7 @@ def predict():
 
 
 def get_metrics(y_test, y_pred):
-    label_names = ["1AVB", "CRBBB", "CLBBB", "STACH", "SBRAD", "AFIB"]
+    label_names = config['labels']
     conf_matrix = confusion_matrix(y_test, y_pred)
     with open('./confusion_matrix.pickle', 'wb')as f:
         pickle.dump(confusion_matrix, f)
@@ -47,4 +47,3 @@ def get_metrics(y_test, y_pred):
             'precision_macro': precision_score(y_test, y_pred, average="macro").round(3),
             'precision_micro': precision_score(y_test, y_pred, average="micro").round(3)}
 
-predict()

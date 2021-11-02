@@ -5,6 +5,7 @@ import ast
 import json
 import math
 import os
+import zipfile
 from sklearn.preprocessing import MultiLabelBinarizer
 
 with open('config.json', 'r')as fin:
@@ -24,11 +25,12 @@ def load_raw_data_ptb(df, path):
 
 def load_raw_data_tis(df, path, needed_length=5000, pad_mode='constant'):
     # considering that all of the files in df are sampled as config['sampling_rate']
-    files = [path + file for file in list(df.filename)]
+    zf = zipfile.ZipFile(config['technion_ecg_data'])
+    files = ['technion_ecg_data/'+file for file in list(df.filename)]
     X = []
     for file in files:
         row_data = []
-        file_df = pd.read_csv(file, skiprows=10, sep=',')
+        file_df = pd.read_csv(zf.open(file), skiprows=10, sep=',')
         file_df.columns = file_df.columns.str.strip()
         for lead in config['leads_order']:
             if len(file_df[lead]) >= needed_length:
@@ -44,6 +46,21 @@ def load_raw_data_tis(df, path, needed_length=5000, pad_mode='constant'):
         X.append(row_data)
     return np.array(X)
 
+
+def get_tis_data(classification='multi-class'):
+    df = pd.read_csv('./tis_database.csv')
+    df.ptb_labels = df.ptb_labels.apply(lambda x: ast.literal_eval(x))
+    if classification=='multi-class':
+        df = df[df['ptb_labels'].apply(lambda x:len(x) == 1)]
+    elif classification=='multi-label':
+        df = df[df['ptb_labels'].apply(lambda x:len(x) >= 1)]
+    X = load_raw_data_tis(df, config['tis_path'])
+
+    # one-hot encoding labels
+    mlb = MultiLabelBinarizer(classes=config['labels'])
+    y_labels = mlb.fit_transform(df.ptb_labels)
+    return X, y_labels
+    
 
 def filter_labels(x):
     return [key for key in x.keys() if key in config['labels']]
@@ -129,9 +146,6 @@ def save_filtered():
         i += 1
     Y = pd.DataFrame(info)
     Y.to_csv('./tis_database.csv', index=False)
-
-
-save_filtered()
 
 
 
