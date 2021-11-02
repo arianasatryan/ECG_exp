@@ -7,6 +7,7 @@ import math
 import os
 import zipfile
 from sklearn.preprocessing import MultiLabelBinarizer
+from sklearn.model_selection import train_test_split
 
 with open('config.json', 'r')as fin:
     config = json.load(fin)
@@ -47,18 +48,38 @@ def load_raw_data_tis(df, path, needed_length=5000, pad_mode='constant'):
     return np.array(X)
 
 
-def get_tis_data(classification='multi-class'):
+def get_tis_data(classification='multi-class', return_data='all', test_portion=0.2, val_portion=0.2):
     df = pd.read_csv('./tis_database.csv')
     df.ptb_labels = df.ptb_labels.apply(lambda x: ast.literal_eval(x))
-    if classification=='multi-class':
+    if classification == 'multi-class':
         df = df[df['ptb_labels'].apply(lambda x:len(x) == 1)]
-    elif classification=='multi-label':
+    elif classification == 'multi-label':
         df = df[df['ptb_labels'].apply(lambda x:len(x) >= 1)]
+
+    if return_data == 'train' or return_data == 'test':
+        train_df, test_df = train_test_split(df, test_size=test_portion, random_state=SEED)
+        df = train_df if return_data == 'train' else test_df
+
+    if return_data == 'val':
+        train_df, _ = train_test_split(df, test_size=test_portion, random_state=SEED)
+        _, val_df = train_test_split(train_df, test_size=val_portion, random_state=SEED)
+        df = val_df
+
     X = load_raw_data_tis(df, config['tis_path'])
 
     # one-hot encoding labels
     mlb = MultiLabelBinarizer(classes=config['labels'])
     y_labels = mlb.fit_transform(df.ptb_labels)
+
+    if return_data == 'train_test_split':
+        X_train, X_test, y_train, y_test = train_test_split(X, y_labels, test_size=test_portion, random_state=SEED)
+        return X_train, X_test, y_train, y_test
+
+    if return_data == 'train_val_test_split':
+        X_train, X_test, y_train, y_test = train_test_split(X, y_labels, test_size=test_portion, random_state=SEED)
+        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=val_portion, random_state=SEED)
+        return X_train, X_val, X_test, y_train, y_val, y_test
+
     return X, y_labels
     
 
@@ -94,7 +115,6 @@ def train_val_test_split(test_portion=0.2, val_portion=0.2):
     val_idx, training_idx = indices[:needed_val_size], indices[needed_val_size:]
     x_train, x_val = x_train[training_idx, :], x_train[val_idx, :]
     y_train, y_val = y_train.iloc[training_idx], y_train.iloc[val_idx]
-
 
     # one-hot encoding labels
     mlb = MultiLabelBinarizer(classes=config['labels'])
