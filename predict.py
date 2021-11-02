@@ -22,7 +22,7 @@ def predict(classification='multi-class'):
     y_test_labels = np.argmax(y_test, axis=1)
     y_pred_labels = np.argmax(y_pred, axis=1) if classification == 'multi-class' else preprocessing(y_pred)
 
-    metrics = get_metrics(y_test_labels, y_pred_labels)
+    metrics = get_metrics(y_test_labels, y_pred_labels, classification)
     with open('./{}_quality.json'.format(experiment_name), 'w') as f:
         json.dump(metrics, f, indent=4)
 
