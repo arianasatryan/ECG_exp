@@ -13,6 +13,12 @@
         "STACH",
         "SBRAD",
         "AFIB"
-    ]
+    ],
+    "training": {
+        "loss": "binary_crossentropy",
+        "lr": 0.001,
+        "batch_size": 64,
+        "epochs": 30
+    }
 }
 
