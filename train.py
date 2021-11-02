@@ -2,11 +2,42 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import (ModelCheckpoint, TensorBoard, ReduceLROnPlateau,
                                         CSVLogger, EarlyStopping)
 from tensorflow.keras.metrics import Accuracy, Recall, Precision
+
 from model import get_model
 from load_data import train_val_test_split, config
 
 train_config = config["training"]
 classification_type = 'multi-label'
+
+
+def train_generator(X_train, y_train):
+    batch_size = train_config["batch_size"]
+    for j in range(0, train_config["epochs"]):
+        i = 0
+        while i < X_train.shape[0]:
+            if i + batch_size < X_train.shape[0]:
+                X_batch = X_train[i:i + batch_size]
+                y_batch = y_train[i:i + batch_size]
+            else:
+                X_batch = X_train[i:]
+                y_batch = y_train[i:]
+            i += batch_size
+            yield X_batch, y_batch
+
+
+def val_generator(X_val, y_val):
+    batch_size = train_config["batch_size"]
+    for j in range(0, train_config["epochs"]):
+        i = 0
+        while i < X_val.shape[0]:
+            if i + batch_size < X_val.shape[0]:
+                X_batch = X_val[i:i + batch_size]
+                y_batch = y_val[i:i + batch_size]
+            else:
+                X_batch = X_val[i:]
+                y_batch = y_val[i:]
+            i += batch_size
+            yield X_batch, y_batch
 
 
 def train_model(train_config):
@@ -32,9 +63,9 @@ def train_model(train_config):
     callbacks += [ModelCheckpoint('./{}_backup_model_last.hdf5'.format(classification_type)),
                   ModelCheckpoint('./{}_backup_model_best.hdf5'.format(classification_type), save_best_only=True)]
     # Train neural network
-    history = model.fit(X_train, y_train,
-                        validation_data=(X_val, y_val),
-                        batch_size=train_config["batch_size"],
+    history = model.fit(train_generator(X_train, y_train),
+                        steps_per_epoch=X_train.shape[0]//train_config["batch_size"],
+                        validation_data=val_generator(X_val, y_val),
                         epochs=train_config["epochs"],
                         initial_epoch=0,  # If you are continuing a interrupted section change here
                         callbacks=callbacks,
