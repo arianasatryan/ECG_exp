@@ -15,16 +15,23 @@ with open('config.json', 'r')as fin:
 SEED = 1
 
 
-def load_raw_data_ptb(df, path):
+def load_raw_data_ptb(df, needed_length=5000, pad_mode='constant'):
+    path = config['ptb_path']
     if config['sampling_rate'] == 100:
         data = [wfdb.rdsamp(path+f) for f in df.filename_lr]
     elif config['sampling_rate'] == 500:
         data = [wfdb.rdsamp(path+f) for f in df.filename_hr]
-    data = np.array([signal for signal, meta in data])
+
+    if len(data[0][0]) >= needed_length:
+        # truncating
+        data = np.array([signal[:needed_length] for signal, meta in data])
+    else:
+        # padding
+        data = np.array([np.pad(signal, (0, needed_length - len(data[0][0])), mode=pad_mode) for signal, meta in data])
     return data
 
 
-def load_raw_data_tis(df, path, needed_length=5000, pad_mode='constant'):
+def load_raw_data_tis(df, needed_length=5000, pad_mode='constant'):
     # considering that all of the files in df are sampled as config['sampling_rate']
     zf = zipfile.ZipFile(config['tis_path'])
     files = ['technion_ecg_data/'+file for file in list(df.filename)]
@@ -40,7 +47,7 @@ def load_raw_data_tis(df, path, needed_length=5000, pad_mode='constant'):
             else:
                 # padding
                 lead_data = np.array(file_df[lead])
-                lead_data = np.pad(lead_data, (0, 5000 - lead_data.shape[0]), mode=pad_mode)
+                lead_data = np.pad(lead_data, (0, needed_length - lead_data.shape[0]), mode=pad_mode)
             row_data.append(lead_data)
         row_data = np.stack(row_data, axis=0)
         row_data = np.transpose(row_data)
