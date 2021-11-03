@@ -10,15 +10,15 @@ train_config = config["training"]
 classification_type = 'multi-label'
 
 
-def train_generator(X_train, y_train):
+def train_generator():
     df, y = get_tis_data(classification='multi-class', return_data='train',
-                      test_portion=0.2, val_portion=0.2, return_df=True)
+                        test_portion=0.2, val_portion=0.2, return_df=True)
     batch_size = train_config["batch_size"]
     for epoch in range(0, train_config["epochs"]):
         split_ind = 0
-        while split_ind != 0:
+        while split_ind < df.shape[0]:
             ind = 0
-            if split_ind + 5000 < X_train.shape[0]:
+            if split_ind + 5000 < df.shape[0]:
                 X_train = load_raw_data_tis(df[split_ind: split_ind + 5000], needed_length=5000, pad_mode='constant')
                 y_train = y[split_ind: split_ind + 5000]
             else:
@@ -33,6 +33,8 @@ def train_generator(X_train, y_train):
                     y_batch = y_train[ind:]
                 ind += batch_size
                 yield X_batch, y_batch
+            split_ind += 5000
+
 
 
 def val_generator(X_val, y_val):
@@ -60,8 +62,11 @@ def train_model(train_config):
                                min_delta=0.00001)]
 
     #add data spliting
-    X_train, X_val,  X_test, y_train, y_val, y_test = train_val_test_split()
-
+    # X_train, X_val,  X_test, y_train, y_val, y_test = train_val_test_split()
+    df, y = get_tis_data(classification='multi-class', return_data='train',
+                         test_portion=0.2, val_portion=0.2, return_df=True)
+    X_val, y_val = get_tis_data(classification='multi-class', return_data='val',
+                                test_portion=0.2, val_portion=0.2, return_df=False)
     # If you are continuing an interrupted section, uncomment line bellow:
     #   model = keras.models.load_model(PATH_TO_PREV_MODEL, compile=False)
     model = get_model(len(train_config["labels"]))
@@ -73,9 +78,9 @@ def train_model(train_config):
     callbacks += [ModelCheckpoint('./{}_backup_model_last.hdf5'.format(classification_type)),
                   ModelCheckpoint('./{}_backup_model_best.hdf5'.format(classification_type), save_best_only=True)]
     # Train neural network
-    history = model.fit(train_generator(X_train, y_train),
-                        steps_per_epoch=X_train.shape[0]//train_config["batch_size"],
-                        validation_data=val_generator(X_val, y_val),
+    history = model.fit(train_generator(),
+                        steps_per_epoch=df.shape[0]//train_config["batch_size"],
+                        validation_data=(X_val, y_val),
                         epochs=train_config["epochs"],
                         initial_epoch=0,  # If you are continuing a interrupted section change here
                         callbacks=callbacks,
