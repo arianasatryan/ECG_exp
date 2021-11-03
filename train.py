@@ -4,25 +4,35 @@ from tensorflow.keras.callbacks import (ModelCheckpoint, TensorBoard, ReduceLROn
 from tensorflow.keras.metrics import Accuracy, Recall, Precision
 
 from model import get_model
-from load_data import train_val_test_split, config
+from load_data import train_val_test_split, load_raw_data_tis, config, get_tis_data
 
 train_config = config["training"]
 classification_type = 'multi-label'
 
 
 def train_generator(X_train, y_train):
+    df, y = get_tis_data(classification='multi-class', return_data='train',
+                      test_portion=0.2, val_portion=0.2, return_df=True)
     batch_size = train_config["batch_size"]
-    for j in range(0, train_config["epochs"]):
-        i = 0
-        while i < X_train.shape[0]:
-            if i + batch_size < X_train.shape[0]:
-                X_batch = X_train[i:i + batch_size]
-                y_batch = y_train[i:i + batch_size]
+    for epoch in range(0, train_config["epochs"]):
+        split_ind = 0
+        while split_ind != 0:
+            ind = 0
+            if split_ind + 5000 < X_train.shape[0]:
+                X_train = load_raw_data_tis(df[split_ind: split_ind + 5000], needed_length=5000, pad_mode='constant')
+                y_train = y[split_ind: split_ind + 5000]
             else:
-                X_batch = X_train[i:]
-                y_batch = y_train[i:]
-            i += batch_size
-            yield X_batch, y_batch
+                X_train = load_raw_data_tis(df[split_ind:], needed_length=5000, pad_mode='constant')
+                y_train = y[split_ind:]
+            while ind < X_train.shape[0]:
+                if ind + batch_size < X_train.shape[0]:
+                    X_batch = X_train[ind:ind + batch_size]
+                    y_batch = y_train[ind:ind + batch_size]
+                else:
+                    X_batch = X_train[ind:]
+                    y_batch = y_train[ind:]
+                ind += batch_size
+                yield X_batch, y_batch
 
 
 def val_generator(X_val, y_val):
