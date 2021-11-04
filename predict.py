@@ -4,25 +4,24 @@ from sklearn.metrics import accuracy_score, recall_score, f1_score, precision_sc
 import numpy as np
 import json
 import pickle
+from load_data import config, get_tis_data_split, get_ptb_data_split, DataGenerator
 
-from load_data import config, get_tis_data
-
-classification_type = 'multi-label'
+classification_type = config['classification_type']
 experiment_name = '{}_ptb8_tis2'.format(classification_type)
 
 
-def predict(classification='multi-class'):
-    model_path = config["path_to_multi_class_model"] if classification == 'multi-class' \
+def predict():
+    model_path = config["path_to_multi_class_model"] if classification_type == 'multi-class' \
         else config["path_to_multi_label_model"]
-    X_test, y_test = get_tis_data(classification=classification, return_data='test')
+    _, _, test_df, _, _, y_test_labels = get_tis_data_split(classification_type)
+    test_gen = DataGenerator(test_df, y_test_labels, source='tis', batch_size=config['training']['batch_size'])
 
     model = load_model(model_path, compile=False)
+    y_pred = model.predict(test_gen)
+    y_test_labels = np.argmax(y_test_labels, axis=1) if classification_type == 'multi-class' else y_test_labels
+    y_pred_labels = np.argmax(y_pred, axis=1) if classification_type == 'multi-class' else preprocessing(y_pred)
 
-    y_pred = model.predict(X_test)
-    y_test_labels = np.argmax(y_test, axis=1) if classification == 'multi-class' y_test
-    y_pred_labels = np.argmax(y_pred, axis=1) if classification == 'multi-class' else preprocessing(y_pred)
-
-    metrics = get_metrics(y_test_labels, y_pred_labels, classification)
+    metrics = get_metrics(y_test_labels, y_pred_labels, classification_type)
     with open('./{}_quality.json'.format(experiment_name), 'w') as f:
         json.dump(metrics, f, indent=4)
 
@@ -56,5 +55,4 @@ def preprocessing(y_pred):
             pred_label.append(label)
         y_pred_labels.append(pred_label)
     return np.array(y_pred_labels)
-
 

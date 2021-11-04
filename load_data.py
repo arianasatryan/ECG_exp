@@ -8,11 +8,35 @@ import os
 import zipfile
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.model_selection import train_test_split
+from tensorflow.keras.utils import Sequence
+from math import ceil
+
 
 with open('config.json', 'r')as fin:
     config = json.load(fin)
 
 SEED = 1
+
+
+class DataGenerator(Sequence):
+
+    def __init__(self, x_df, y_labels, source, batch_size=32, needed_length=5000, pad_mode='constant'):
+        self.x, self.y = x_df, y_labels
+        self.batch_size = batch_size
+        self.source = source
+        self.needed_length = needed_length
+        self.pad_mode = pad_mode
+
+    def __len__(self):
+        return ceil(len(self.x) / self.batch_size)
+
+    def __getitem__(self, idx):
+        end = min(self.x.shape[0], (idx + 1) * self.batch_size)
+        if self.source == 'tis':
+            x_batch = load_raw_data_tis(self.x[idx * self.batch_size:end], self.needed_length, self.pad_mode)
+        elif self.source == 'ptb':
+            x_batch = load_raw_data_ptb(self.x[idx * self.batch_size:end], self.needed_length, self.pad_mode)
+        return x_batch, self.y[idx * self.batch_size:end]
 
 
 def load_raw_data_ptb(df, needed_length=5000, pad_mode='constant'):
@@ -55,7 +79,7 @@ def load_raw_data_tis(df, needed_length=5000, pad_mode='constant'):
     return np.array(X)
 
 
-def get_tis_data(classification='multi-class', return_data='all', test_portion=0.2, val_portion=0.2, return_df=False):
+def get_tis_data_split(classification='multi-class', test_portion=0.2, val_portion=0.2):
     df = pd.read_csv('./tis_database.csv')
     df.ptb_labels = df.ptb_labels.apply(lambda x: ast.literal_eval(x))
     if classification == 'multi-class':
@@ -63,77 +87,50 @@ def get_tis_data(classification='multi-class', return_data='all', test_portion=0
     elif classification == 'multi-label':
         df = df[df['ptb_labels'].apply(lambda x:len(x) >= 1)]
 
-    if return_data == 'train' or return_data == 'test':
-        train_df, test_df = train_test_split(df, test_size=test_portion, random_state=SEED)
-        df = train_df if return_data == 'train' else test_df
-
-    if return_data == 'val':
-        train_df, _ = train_test_split(df, test_size=test_portion, random_state=SEED)
-        _, val_df = train_test_split(train_df, test_size=val_portion, random_state=SEED)
-        df = val_df
+    train_df, test_df = train_test_split(df, test_size=test_portion, random_state=SEED)
+    train_df, val_df = train_test_split(train_df, test_size=val_portion, random_state=SEED)
 
     # one-hot encoding labels
     mlb = MultiLabelBinarizer(classes=config['labels'])
-    y_labels = mlb.fit_transform(df.ptb_labels)
-    
-    if return_df:
-        return df, y_labels
+    y_train_labels = mlb.fit_transform(train_df.ptb_labels)
+    y_val_labels = mlb.fit_transform(val_df.ptb_labels)
+    y_test_labels = mlb.fit_transform(test_df.ptb_labels)
 
-    # load raw data
-    X = load_raw_data_tis(df, config['tis_path'])
-
-    if return_data == 'train_test_split':
-        X_train, X_test, y_train, y_test = train_test_split(X, y_labels, test_size=test_portion, random_state=SEED)
-        return X_train, X_test, y_train, y_test
-
-    if return_data == 'train_val_test_split':
-        X_train, X_test, y_train, y_test = train_test_split(X, y_labels, test_size=test_portion, random_state=SEED)
-        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=val_portion, random_state=SEED)
-        return X_train, X_val, X_test, y_train, y_val, y_test
-
-    return X, y_labels
-    
-
-def filter_labels(x):
-    return [key for key in x.keys() if key in config['labels']]
+    return train_df, val_df, test_df, y_train_labels, y_val_labels, y_test_labels
 
 
-def train_val_test_split(test_portion=0.2, val_portion=0.2):
-    Y = pd.read_csv(config['ptb_path'] + 'ptbxl_database.csv')
-    Y.scp_codes = Y.scp_codes.apply(lambda x: ast.literal_eval(x))
-
-    # selecting config labels
-    Y['labels'] = Y.scp_codes.apply(filter_labels)
-    Y = Y[Y['labels'].apply(lambda x: len(x) != 0)]
+def get_ptb_data_split(classification='multi-class', test_portion=0.2, val_portion=0.2):
+    df = pd.read_csv('./ptbxl_database.csv')
+    df.labels = df.labels.apply(lambda x: ast.literal_eval(x))
+    if classification == 'multi-class':
+        df = df[df['labels'].apply(lambda x: len(x) == 1)]
+    elif classification == 'multi-label':
+        df = df[df['labels'].apply(lambda x: len(x) >= 1)]
 
     trusted_folds = [9, 10]
-    trusted_df = Y[Y['strat_fold'].isin(trusted_folds)]
-    not_trusted_df = Y[~Y['strat_fold'].isin(trusted_folds)]
-    needed_test_size = math.floor(len(Y) * test_portion)
+    trusted_df = df[df['strat_fold'].isin(trusted_folds)]
+    not_trusted_df = df[~df['strat_fold'].isin(trusted_folds)]
+    needed_test_size = math.floor(len(df) * test_portion)
 
     # splitting train and test
     indices = np.random.RandomState(seed=SEED).permutation(trusted_df.shape[0])
     test_idx, training_idx = indices[:needed_test_size], indices[needed_test_size:]
-    y_test = trusted_df.iloc[test_idx, :]
-    y_train = pd.concat([trusted_df.iloc[training_idx, :], not_trusted_df])
-
-    x_train = load_raw_data_ptb(y_train, config['sampling_rate'], config['ptb_path'])
-    x_test = load_raw_data_ptb(y_test, config['sampling_rate'], config['ptb_path'])
+    test_df = trusted_df.iloc[test_idx, :]
+    train_df = pd.concat([trusted_df.iloc[training_idx, :], not_trusted_df])
 
     # splitting train and validation
-    indices = np.random.RandomState(seed=SEED).permutation(x_train.shape[0])
-    needed_val_size = math.floor(len(x_train) * val_portion)
+    indices = np.random.RandomState(seed=SEED).permutation(train_df.shape[0])
+    needed_val_size = math.floor(train_df.shape[0] * val_portion)
     val_idx, training_idx = indices[:needed_val_size], indices[needed_val_size:]
-    x_train, x_val = x_train[training_idx, :], x_train[val_idx, :]
-    y_train, y_val = y_train.iloc[training_idx], y_train.iloc[val_idx]
+    train_df, val_df = train_df.iloc[training_idx], train_df.iloc[val_idx]
 
     # one-hot encoding labels
     mlb = MultiLabelBinarizer(classes=config['labels'])
-    y_train_labels = mlb.fit_transform(y_train.labels)
-    y_val_labels = mlb.fit_transform(y_val.labels)
-    y_test_labels = mlb.fit_transform(y_test.labels)
+    y_train_labels = mlb.fit_transform(train_df.labels)
+    y_val_labels = mlb.fit_transform(val_df.labels)
+    y_test_labels = mlb.fit_transform(test_df.labels)
 
-    return x_train, x_val, x_test, y_train_labels, y_val_labels, y_test_labels
+    return train_df, val_df, test_df, y_train_labels, y_val_labels, y_test_labels
 
 
 def map_labels(labels, source='tis'):
