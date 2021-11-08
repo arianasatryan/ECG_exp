@@ -71,6 +71,7 @@ class DataGenerator(Sequence):
 
     def __getitem__(self, idx):
         end = min(self.x.shape[0], (idx + 1) * self.batch_size)
+        y_batch = self.y[idx * self.batch_size:end]
         if self.source == 'tis':
             x_batch = load_raw_data_tis(self.x[idx * self.batch_size:end], self.needed_length, self.pad_mode)
         elif self.source == 'ptb':
@@ -78,10 +79,14 @@ class DataGenerator(Sequence):
         elif self.source == 'both':
             ptb_rows = self.x[idx * self.batch_size:end][self.x["tis_codes"].isnull()]
             tis_rows = self.x[idx * self.batch_size:end][~self.x["tis_codes"].isnull()]
+
+            new_ind_order = list(ptb_rows.index) + list(tis_rows.index)
+            y_batch = np.array([self.y[i] for i in new_ind_order])
+
             ptb_raw_data = load_raw_data_ptb(ptb_rows, self.needed_length, self.pad_mode)
             tis_raw_data = load_raw_data_tis(tis_rows, self.needed_length, self.pad_mode)
             x_batch = np.concatenate([ptb_raw_data, tis_raw_data], axis=0)
-        return x_batch, self.y[idx * self.batch_size:end]
+        return x_batch, y_batch
 
 
 def load_raw_data_ptb(df, needed_length=5000, pad_mode='constant'):
