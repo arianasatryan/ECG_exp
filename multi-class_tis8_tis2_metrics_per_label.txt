@@ -1,0 +1,12 @@
+              precision    recall  f1-score   support
+
+        1AVB       0.70      0.70      0.70        90
+       CRBBB       0.84      0.91      0.87        91
+       CLBBB       0.84      0.89      0.86        36
+       STACH       0.98      0.97      0.98      2254
+       SBRAD       0.96      0.97      0.97      1338
+        AFIB       0.94      0.96      0.95       982
+
+    accuracy                           0.96      4791
+   macro avg       0.88      0.90      0.89      4791
+weighted avg       0.96      0.96      0.96      4791
