@@ -3,8 +3,7 @@ from tensorflow.keras.callbacks import (ModelCheckpoint, TensorBoard, ReduceLROn
                                         CSVLogger, EarlyStopping)
 from tensorflow.keras.metrics import Accuracy, Recall, Precision
 from model import get_model
-from load_data import config, get_tis_data_split, get_ptb_data_split, DataGenerator
-from generate_class_weights import generate_class_weights
+from load_data import config, get_data_generators
 
 train_config = config["training"]
 classification_type = config['classification_type']
@@ -21,15 +20,13 @@ def train_model(train_config):
                                min_delta=0.00001)]
 
     # load data generator
-    train_df, val_df, _, y_train_labels, y_val_labels, _ = get_tis_data_split(classification_type)
-    train_gen = DataGenerator(train_df, y_train_labels, source='tis', batch_size=train_config['batch_size'])
-    val_gen = DataGenerator(val_df, y_val_labels, source='tis', batch_size=train_config['batch_size'])
+    train_gen, val_gen, _, class_weights = get_data_generators(classification_type=classification_type,
+                                                               return_weights=True, data_source='both',
+                                                               batch_size=32, needed_length=5000, pad_mode='constant')
 
     # If you are continuing an interrupted section, uncomment line bellow:
     #   model = keras.models.load_model(PATH_TO_PREV_MODEL, compile=False)
     activation_func = 'softmax' if classification_type == 'multi-class' else 'sigmoid'
-    multi_class = True if classification_type == 'multi-class' else False
-    class_weights = generate_class_weights(y_train_labels, multi_class=multi_class, one_hot_encoded=True)
 
     model = get_model(len(config["labels"]), activation_func)
     model.compile(loss=train_config["loss"], optimizer=optimizer, metrics=[Accuracy(), Recall(), Precision()])
@@ -49,3 +46,5 @@ def train_model(train_config):
                         verbose=1)
     # Save final result
     model.save("./{}_final_model.hdf5".format(classification_type))
+
+train_model(train_config)

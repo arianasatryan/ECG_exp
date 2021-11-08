@@ -4,7 +4,7 @@ from sklearn.metrics import accuracy_score, recall_score, f1_score, precision_sc
 import numpy as np
 import json
 import pickle
-from load_data import config, get_tis_data_split, get_ptb_data_split, DataGenerator
+from load_data import config, get_data_generators
 
 classification_type = config['classification_type']
 experiment_name = f"{classification_type}_{config['experiment_name']}"
@@ -13,8 +13,9 @@ experiment_name = f"{classification_type}_{config['experiment_name']}"
 def predict():
     model_path = config["path_to_multi_class_model"] if classification_type == 'multi-class' \
         else config["path_to_multi_label_model"]
-    _, _, test_df, _, _, y_test_labels = get_tis_data_split(classification_type)
-    test_gen = DataGenerator(test_df, y_test_labels, source='tis', batch_size=config['training']['batch_size'])
+    _, _, test_gen, _ = get_data_generators(classification_type=classification_type,
+                                            return_weights=True, data_source='both',
+                                            batch_size=32, needed_length=5000, pad_mode='constant')
 
     model = load_model(model_path, compile=False)
     y_pred = model.predict(test_gen)
@@ -55,6 +56,4 @@ def preprocessing(y_pred):
             pred_label.append(label)
         y_pred_labels.append(pred_label)
     return np.array(y_pred_labels)
-
-
 
