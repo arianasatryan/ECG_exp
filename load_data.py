@@ -20,12 +20,13 @@ SEED = 1
 
 class DataGenerator(Sequence):
 
-    def __init__(self, x_df, y_labels, source, batch_size=32, needed_length=5000, pad_mode='constant'):
+    def __init__(self, x_df, y_labels, source, batch_size=32, needed_length=5000, pad_mode='constant', norm_by=None):
         self.x, self.y = x_df, y_labels
         self.batch_size = batch_size
         self.source = source
         self.needed_length = needed_length
         self.pad_mode = pad_mode
+        self.norm_by = norm_by
         if self.source == 'both':
             self.x, self.y = shuffle(x_df, y_labels, random_state=SEED)
 
@@ -43,31 +44,35 @@ class DataGenerator(Sequence):
         else:
             ptb_df = df_batch[df_batch['tis_codes'].isnull()]
             tis_df = df_batch[~df_batch['tis_codes'].isnull()]
-            ptb_records = load_raw_data_ptb(ptb_df, needed_length=self.needed_length, pad_mode=self.pad_mode)
-            tis_records = load_raw_data_tis(tis_df, needed_length=self.needed_length, pad_mode=self.pad_mode)
+            ptb_records = load_raw_data_ptb(ptb_df, needed_length=self.needed_length, pad_mode=self.pad_mode, norm_by=self.norm_by)
+            tis_records = load_raw_data_tis(tis_df, needed_length=self.needed_length, pad_mode=self.pad_mode, norm_by=self.norm_by)
             x_batch = np.concatenate([ptb_records, tis_records], axis=0)
             order = list(ptb_df.index) + list(tis_df.index)
             y_batch = self.y[order]
         return x_batch, y_batch
 
 
-def load_raw_data_ptb(df, needed_length=5000, pad_mode='constant'):
+def load_raw_data_ptb(df, needed_length=5000, pad_mode='constant', norm_by=None):
     path = config['ptb_path']
     if config['sampling_rate'] == 100:
         data = [wfdb.rdsamp(path+f) for f in df.filename_lr]
     elif config['sampling_rate'] == 500:
         data = [wfdb.rdsamp(path+f) for f in df.filename_hr]
 
-    if len(data[0][0]) >= needed_length:
-        # truncating
-        data = np.array([signal[:needed_length] for signal, meta in data])
-    else:
-        # padding
-        data = np.array([np.pad(signal, (0, needed_length - len(data[0][0])), mode=pad_mode) for signal, meta in data])
+    len_ = min(len(data[0][0]), needed_length)
+    data = np.array([signal[:len_] for signal, meta in data])
+
+    if norm_by:
+        data = np.array([normalize(ecg_rec, norm_by) for ecg_rec in data])
+
+    if len_ < needed_length:
+        npad = [(0, 0)] * data[0].ndim
+        npad[0] = (0, needed_length - len_)
+        data = np.array([np.pad(ecg_rec, pad_width=npad, mode=pad_mode) for ecg_rec in data])
     return data
 
 
-def load_raw_data_tis(df, needed_length=5000, pad_mode='constant'):
+def load_raw_data_tis(df, needed_length=5000, pad_mode='constant', norm_by=None):
     # considering that all of the files in df are sampled as config['sampling_rate']
     zf = zipfile.ZipFile(config['tis_path'])
     files = ['technion_ecg_data/'+file for file in list(df.filename)]
@@ -77,18 +82,32 @@ def load_raw_data_tis(df, needed_length=5000, pad_mode='constant'):
         file_df = pd.read_csv(zf.open(file), skiprows=10, sep=',')
         file_df.columns = file_df.columns.str.strip()
         for lead in config['leads_order']:
-            if len(file_df[lead]) >= needed_length:
-                # truncating
-                lead_data = np.array(file_df[lead][:needed_length])
-            else:
+            len_ = min(len(file_df[lead]), needed_length)
+            lead_data = np.array(file_df[lead][:len_])
+            if norm_by:
+                # normalization
+                lead_data = normalize(lead_data, norm_by)
+            if len_ < needed_length:
                 # padding
-                lead_data = np.array(file_df[lead])
                 lead_data = np.pad(lead_data, (0, needed_length - lead_data.shape[0]), mode=pad_mode)
             row_data.append(lead_data)
         row_data = np.stack(row_data, axis=0)
         row_data = np.transpose(row_data)
         X.append(row_data)
     return np.array(X)
+
+
+def normalize(ecg_arr, norm_mode='min_max'):
+    def min_max_normalization(lead_arr):
+        return (lead_arr - np.min(lead_arr)) / (np.max(lead_arr) - np.min(lead_arr))
+
+    def z_normalization(lead_arr):
+        return (lead_arr - np.mean(lead_arr)) / np.std(lead_arr)
+
+    ecg_arr = np.apply_along_axis(min_max_normalization, 0, ecg_arr) if norm_mode == 'min_max' else np.apply_along_axis(
+        z_normalization, 0, ecg_arr)
+
+    return ecg_arr
 
 
 def get_tis_data_split(classification='multi-class', test_portion=0.2, val_portion=0.2):
@@ -186,8 +205,3 @@ def save_filtered():
         i += 1
     Y = pd.DataFrame(info)
     Y.to_csv('./tis_database.csv', index=False)
-
-
-
-
-
