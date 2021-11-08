@@ -7,7 +7,7 @@ import pickle
 from load_data import config, get_tis_data_split, get_ptb_data_split, DataGenerator
 
 classification_type = config['classification_type']
-experiment_name = '{}_ptb8_tis2'.format(classification_type)
+experiment_name = f"{classification_type}_{config['experiment_name']}"
 
 
 def predict():
@@ -55,4 +55,6 @@ def preprocessing(y_pred):
             pred_label.append(label)
         y_pred_labels.append(pred_label)
     return np.array(y_pred_labels)
+
+
 

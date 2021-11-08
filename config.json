@@ -1,8 +1,8 @@
 {
-    "ptb_path": "/path/to/ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.1/",
-    "tis_path": "/path/to/technion_ecg_data.zip",
+    "ptb_path": "/home/lab6/COLLECTED_DS/ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.1/",
+    "tis_path": "/home/lab6/Downloads/technion_ecg_data.zip",
     "pathology_mapping_file": "/path/to/pathology_mapping.csv",
-    "path_to_multi_class_model": "/path/to/multi-class_final_model.hdf5",
+    "path_to_multi_class_model": "./multi-class_final_model.hdf5",
     "path_to_multi_label_model": "/path/to/multi-label_final_model.hdf5",
     "leads_order": ["I", "II", "III", "aVL", "aVR", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"],
     "sampling_rate": 500,
@@ -14,9 +14,10 @@
         "SBRAD",
         "AFIB"
     ],
-    "classification_type": "multi-label",
+    "classification_type": "multi-class",
+    "experiment_name": "tis8_tis2",
     "training": {
-        "loss": "binary_crossentropy",
+        "loss": "categorical_crossentropy",
         "lr": 0.001,
         "batch_size": 64,
         "epochs": 30
