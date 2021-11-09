@@ -1,4 +1,3 @@
-
 import pandas as pd
 import numpy as np
 import wfdb
@@ -12,8 +11,6 @@ from sklearn.model_selection import train_test_split
 from tensorflow.keras.utils import Sequence
 from math import ceil
 from sklearn.utils import shuffle
-from generate_class_weights import generate_class_weights
-
 
 with open('config.json', 'r')as fin:
     config = json.load(fin)
@@ -21,50 +18,16 @@ with open('config.json', 'r')as fin:
 SEED = 1
 
 
-def get_data_generators(classification_type, data_source='both', return_weights=True,
-                        batch_size=32, needed_length=5000, pad_mode='constant'):
-    if data_source == 'tis':
-        train_df, val_df, test_df, y_train_labels, y_val_labels, y_test_labels = get_tis_data_split(classification_type)
-    elif data_source == 'ptb':
-        train_df, val_df, test_df, y_train_labels, y_val_labels, y_test_labels = get_ptb_data_split(classification_type)
-    elif data_source == 'both':
-        train_df_tis, val_df_tis, test_df_tis, y_train_labels_tis, y_val_labels_tis, y_test_labels_tis = \
-            get_tis_data_split(classification_type)
-        train_df_ptb, val_df_ptb, test_df_ptb, y_train_labels_ptb, y_val_labels_ptb, y_test_labels_ptb = \
-            get_ptb_data_split(classification_type)
-
-        train_df = pd.concat([train_df_tis, train_df_ptb], axis=0, ignore_index=True)
-        y_train_labels = np.concatenate([y_train_labels_tis, y_train_labels_ptb], axis=0)
-
-        val_df = pd.concat([val_df_tis, val_df_ptb], axis=0, ignore_index=True)
-        y_val_labels = np.concatenate([y_val_labels_tis, y_val_labels_ptb], axis=0)
-
-        test_df = pd.concat([test_df_tis, test_df_ptb], axis=0, ignore_index=True)
-        y_test_labels = np.concatenate([y_test_labels_tis, y_test_labels_ptb], axis=0)
-
-    train_gen = DataGenerator(train_df, y_train_labels, data_source, batch_size, needed_length, pad_mode)
-    val_gen = DataGenerator(val_df, y_val_labels,  data_source, batch_size, needed_length, pad_mode)
-    test_gen = DataGenerator(test_df, y_test_labels,  data_source, batch_size, needed_length, pad_mode)
-
-    if not return_weights:
-        return train_gen, val_gen, test_gen
-
-    multi_class = True if classification_type == 'multi-class' else False
-    class_weights = generate_class_weights(y_train_labels, multi_class=multi_class, one_hot_encoded=True)
-    return train_gen, val_gen, test_gen, class_weights
-
-
 class DataGenerator(Sequence):
 
     def __init__(self, x_df, y_labels, source, batch_size=32, needed_length=5000, pad_mode='constant'):
+        self.x, self.y = x_df, y_labels
         self.batch_size = batch_size
         self.source = source
         self.needed_length = needed_length
         self.pad_mode = pad_mode
         if self.source == 'both':
             self.x, self.y = shuffle(x_df, y_labels, random_state=SEED)
-        else:
-            self.x, self.y = x_df, y_labels
 
     def __len__(self):
         return ceil(len(self.x) / self.batch_size)
@@ -72,20 +35,19 @@ class DataGenerator(Sequence):
     def __getitem__(self, idx):
         end = min(self.x.shape[0], (idx + 1) * self.batch_size)
         y_batch = self.y[idx * self.batch_size:end]
+        df_batch = self.x[idx * self.batch_size:end]
         if self.source == 'tis':
-            x_batch = load_raw_data_tis(self.x[idx * self.batch_size:end], self.needed_length, self.pad_mode)
+            x_batch = load_raw_data_tis(df_batch, self.needed_length, self.pad_mode)
         elif self.source == 'ptb':
-            x_batch = load_raw_data_ptb(self.x[idx * self.batch_size:end], self.needed_length, self.pad_mode)
-        elif self.source == 'both':
-            ptb_rows = self.x[idx * self.batch_size:end][self.x["tis_codes"].isnull()]
-            tis_rows = self.x[idx * self.batch_size:end][~self.x["tis_codes"].isnull()]
-
-            new_ind_order = list(ptb_rows.index) + list(tis_rows.index)
-            y_batch = np.array([self.y[i] for i in new_ind_order])
-
-            ptb_raw_data = load_raw_data_ptb(ptb_rows, self.needed_length, self.pad_mode)
-            tis_raw_data = load_raw_data_tis(tis_rows, self.needed_length, self.pad_mode)
-            x_batch = np.concatenate([ptb_raw_data, tis_raw_data], axis=0)
+            x_batch = load_raw_data_ptb(df_batch, self.needed_length, self.pad_mode)
+        else:
+            ptb_df = df_batch[df_batch['tis_codes'].isnull()]
+            tis_df = df_batch[~df_batch['tis_codes'].isnull()]
+            ptb_records = load_raw_data_ptb(ptb_df, needed_length=self.needed_length, pad_mode=self.pad_mode)
+            tis_records = load_raw_data_tis(tis_df, needed_length=self.needed_length, pad_mode=self.pad_mode)
+            x_batch = np.concatenate([ptb_records, tis_records], axis=0)
+            order = list(ptb_df.index) + list(tis_df.index)
+            y_batch = self.y[order]
         return x_batch, y_batch
 
 
@@ -213,6 +175,7 @@ def save_filtered():
     i = 1
     info = []
     for file in files:
+        print(i)
         file_df = pd.read_csv(config['tis_path'] + file, nrows=5, sep=':')
         if int(file_df.iloc[0][1]) == config['sampling_rate']:
             tis_codes = ast.literal_eval(file_df.iloc[4][1].strip())
@@ -220,6 +183,7 @@ def save_filtered():
             ptb_labels = [key for key in ptb_labels if key in config['labels']]
             if ptb_labels:
                 info.append({'filename': file, 'ptb_labels': ptb_labels, 'tis_codes': tis_codes})
+        i += 1
     Y = pd.DataFrame(info)
     Y.to_csv('./tis_database.csv', index=False)
 

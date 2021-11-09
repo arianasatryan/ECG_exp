@@ -1,5 +1,5 @@
 {
-    "ptb_path": "/home/lab6/COLLECTED_DS/ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.1/",
+    "ptb_path": "/home/lab6/Desktop/COLLECTED_DS/ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.1/",
     "tis_path": "/home/lab6/Downloads/technion_ecg_data.zip",
     "pathology_mapping_file": "/path/to/pathology_mapping.csv",
     "path_to_multi_class_model": "./multi-class_final_model.hdf5",
@@ -15,7 +15,7 @@
         "AFIB"
     ],
     "classification_type": "multi-class",
-    "experiment_name": "tis8_tis2",
+    "experiment_name": "both8_both2",
     "training": {
         "loss": "categorical_crossentropy",
         "lr": 0.001,

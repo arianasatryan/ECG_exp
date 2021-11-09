@@ -28,7 +28,7 @@ def predict():
 
     return y_pred
 
-
+predict()
 def get_metrics(y_test, y_pred, classification='multi-class'):
     label_names = config['labels']
     if classification == 'multi-class':
