@@ -44,7 +44,7 @@ class DataGenerator(Sequence):
             # discarding artefact records
             is_artefact = [np.isnan(np.min(record)) for record in ptb_records]
             order = [list(df_batch.index)[i] for i in range(len(df_batch.index)) if not is_artefact[i]]
-            x_batch = np.array([tis_records[i] for i in range(len(tis_records)) if not is_artefact[i]])
+            x_batch = np.array([ptb_records[i] for i in range(len(ptb_records)) if not is_artefact[i]])
             y_batch = self.y[order]
 
         elif self.source == 'tis':
