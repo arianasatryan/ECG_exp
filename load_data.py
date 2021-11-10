@@ -39,9 +39,13 @@ class DataGenerator(Sequence):
         df_batch = self.x[idx * self.batch_size:end]
 
         if self.source == 'ptb':
-            x_batch = load_raw_data_ptb(df_batch, needed_length=self.needed_length, pad_mode=self.pad_mode,
+            ptb_records = load_raw_data_ptb(df_batch, needed_length=self.needed_length, pad_mode=self.pad_mode,
                                         norm_by=self.norm_by)
-            y_batch = self.y[idx * self.batch_size:end]
+            # discarding artefact records
+            is_artefact = [np.isnan(np.min(record)) for record in ptb_records]
+            order = [list(df_batch.index)[i] for i in range(len(df_batch.index)) if not is_artefact[i]]
+            x_batch = np.array([tis_records[i] for i in range(len(tis_records)) if not is_artefact[i]])
+            y_batch = self.y[order]
 
         elif self.source == 'tis':
             tis_records = load_raw_data_tis(df_batch, needed_length=self.needed_length, pad_mode=self.pad_mode,
@@ -63,9 +67,14 @@ class DataGenerator(Sequence):
             # discarding artefact records
             is_artefact = [np.isnan(np.min(record)) for record in tis_records]
             tis_records = np.array([tis_records[i] for i in range(len(tis_records)) if not is_artefact[i]])
-            x_batch = np.concatenate([ptb_records, tis_records], axis=0)
             tis_indx = [list(tis_df.index)[i] for i in range(len(tis_df.index)) if not is_artefact[i]]
-            order = list(ptb_df.index) + tis_indx
+
+            is_artefact = [np.isnan(np.min(record)) for record in ptb_records]
+            ptb_records = np.array([ptb_records[i] for i in range(len(ptb_records)) if not is_artefact[i]])
+            ptb_indx = [list(ptb_df.index)[i] for i in range(len(ptb_df.index)) if not is_artefact[i]]
+
+            x_batch = np.concatenate([ptb_records, tis_records], axis=0)
+            order = ptb_indx + tis_indx
             y_batch = self.y[order]
         return x_batch, y_batch
 
