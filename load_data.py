@@ -20,7 +20,8 @@ SEED = 1
 
 class DataGenerator(Sequence):
 
-    def __init__(self, x_df, y_labels, source, batch_size=32, needed_length=5000, pad_mode='constant', norm_by=None):
+    def __init__(self, x_df, y_labels, source, batch_size=32, needed_length=5000,
+                 pad_mode='constant', norm_by='min_max'):
         self.x, self.y = x_df, y_labels
         self.batch_size = batch_size
         self.source = source
@@ -35,24 +36,54 @@ class DataGenerator(Sequence):
 
     def __getitem__(self, idx):
         end = min(self.x.shape[0], (idx + 1) * self.batch_size)
-        y_batch = self.y[idx * self.batch_size:end]
         df_batch = self.x[idx * self.batch_size:end]
-        if self.source == 'tis':
-            x_batch = load_raw_data_tis(df_batch, self.needed_length, self.pad_mode)
-        elif self.source == 'ptb':
-            x_batch = load_raw_data_ptb(df_batch, self.needed_length, self.pad_mode)
-        else:
+
+        if self.source == 'ptb':
+            x_batch = load_raw_data_ptb(df_batch, needed_length=self.needed_length, pad_mode=self.pad_mode,
+                                        norm_by=self.norm_by)
+            y_batch = self.y[idx * self.batch_size:end]
+
+        elif self.source == 'tis':
+            tis_records = load_raw_data_tis(df_batch, needed_length=self.needed_length, pad_mode=self.pad_mode,
+                                            norm_by=self.norm_by)
+            # discarding artefact records
+            is_artefact = [np.isnan(np.min(record))for record in tis_records]
+            order = [list(tis_df.index)[i] for i in range(len(tis_df.index)) if not is_artefact[i]]
+            x_batch = np.array([tis_records[i] for i in range(len(tis_records)) if not is_artefact[i]])
+            y_batch = self.y[order]
+
+        elif self.source == 'both':
             ptb_df = df_batch[df_batch['tis_codes'].isnull()]
             tis_df = df_batch[~df_batch['tis_codes'].isnull()]
-            ptb_records = load_raw_data_ptb(ptb_df, needed_length=self.needed_length, pad_mode=self.pad_mode, norm_by=self.norm_by)
-            tis_records = load_raw_data_tis(tis_df, needed_length=self.needed_length, pad_mode=self.pad_mode, norm_by=self.norm_by)
+            ptb_records = load_raw_data_ptb(ptb_df, needed_length=self.needed_length,
+                                            pad_mode=self.pad_mode, norm_by=self.norm_by)
+            tis_records = load_raw_data_tis(tis_df, needed_length=self.needed_length,
+                                            pad_mode=self.pad_mode, norm_by=self.norm_by)
+
+            # discarding artefact records
+            is_artefact = [np.isnan(np.min(record)) for record in tis_records]
+            tis_records = np.array([tis_records[i] for i in range(len(tis_records)) if not is_artefact[i]])
             x_batch = np.concatenate([ptb_records, tis_records], axis=0)
-            order = list(ptb_df.index) + list(tis_df.index)
+            tis_indx = [list(tis_df.index)[i] for i in range(len(tis_df.index)) if not is_artefact[i]]
+            order = list(ptb_df.index) + tis_indx
             y_batch = self.y[order]
         return x_batch, y_batch
 
 
-def load_raw_data_ptb(df, needed_length=5000, pad_mode='constant', norm_by=None):
+def normalize(ecg_arr, norm_by):
+
+    def min_max_normalization(lead_arr):
+        return (lead_arr - np.min(lead_arr)) / (np.max(lead_arr) - np.min(lead_arr))
+
+    def z_normalization(lead_arr):
+        return (lead_arr - np.mean(lead_arr)) / np.std(lead_arr)
+
+    ecg_arr = np.apply_along_axis(min_max_normalization, 0, ecg_arr) if norm_by == 'min_max' else np.apply_along_axis(
+        z_normalization, 0, ecg_arr)
+    return ecg_arr
+
+
+def load_raw_data_ptb(df, needed_length, pad_mode, norm_by):
     path = config['ptb_path']
     if config['sampling_rate'] == 100:
         data = [wfdb.rdsamp(path+f) for f in df.filename_lr]
@@ -72,14 +103,14 @@ def load_raw_data_ptb(df, needed_length=5000, pad_mode='constant', norm_by=None)
     return data
 
 
-def load_raw_data_tis(df, needed_length=5000, pad_mode='constant', norm_by=None):
+def load_raw_data_tis(df, needed_length, pad_mode, norm_by):
     # considering that all of the files in df are sampled as config['sampling_rate']
     zf = zipfile.ZipFile(config['tis_path'])
-    files = ['technion_ecg_data/'+file for file in list(df.filename)]
+    files = ['technion_ecg_data/' + file for file in list(df.filename)]
     X = []
-    for file in files:
+    for i in range(len(files)):
         row_data = []
-        file_df = pd.read_csv(zf.open(file), skiprows=10, sep=',')
+        file_df = pd.read_csv(zf.open(files[i]), skiprows=10, sep=',')
         file_df.columns = file_df.columns.str.strip()
         for lead in config['leads_order']:
             len_ = min(len(file_df[lead]), needed_length)
@@ -95,19 +126,6 @@ def load_raw_data_tis(df, needed_length=5000, pad_mode='constant', norm_by=None)
         row_data = np.transpose(row_data)
         X.append(row_data)
     return np.array(X)
-
-
-def normalize(ecg_arr, norm_mode='min_max'):
-    def min_max_normalization(lead_arr):
-        return (lead_arr - np.min(lead_arr)) / (np.max(lead_arr) - np.min(lead_arr))
-
-    def z_normalization(lead_arr):
-        return (lead_arr - np.mean(lead_arr)) / np.std(lead_arr)
-
-    ecg_arr = np.apply_along_axis(min_max_normalization, 0, ecg_arr) if norm_mode == 'min_max' else np.apply_along_axis(
-        z_normalization, 0, ecg_arr)
-
-    return ecg_arr
 
 
 def get_tis_data_split(classification='multi-class', test_portion=0.2, val_portion=0.2):
@@ -205,3 +223,6 @@ def save_filtered():
         i += 1
     Y = pd.DataFrame(info)
     Y.to_csv('./tis_database.csv', index=False)
+
+
+
