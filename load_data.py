@@ -154,6 +154,9 @@ def get_tis_data_split(classification='multi-class', test_portion=0.2, val_porti
     y_val_labels = mlb.fit_transform(val_df.ptb_labels)
     y_test_labels = mlb.fit_transform(test_df.ptb_labels)
 
+    train_df = train_df.reset_index(drop=True)
+    val_df = val_df.reset_index(drop=True)
+    test_df = test_df.reset_index(drop=True)
     return train_df, val_df, test_df, y_train_labels, y_val_labels, y_test_labels
 
 
@@ -188,6 +191,9 @@ def get_ptb_data_split(classification='multi-class', test_portion=0.2, val_porti
     y_val_labels = mlb.fit_transform(val_df.labels)
     y_test_labels = mlb.fit_transform(test_df.labels)
 
+    train_df = train_df.reset_index(drop=True)
+    val_df = val_df.reset_index(drop=True)
+    test_df = test_df.reset_index(drop=True)
     return train_df, val_df, test_df, y_train_labels, y_val_labels, y_test_labels
 
 
@@ -232,6 +238,3 @@ def save_filtered():
         i += 1
     Y = pd.DataFrame(info)
     Y.to_csv('./tis_database.csv', index=False)
-
-
-
