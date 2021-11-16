@@ -88,6 +88,7 @@ def artefact_check(record):
     record = record.transpose()
     for lead in record:
         if len(set(lead)) == 1:
+            print(lead)
             return True
     return False
 
@@ -171,6 +172,7 @@ def get_tis_data_split(classification='multi-class', test_portion=0.2, val_porti
 
 
 def get_ptb_data_split(classification='multi-class', test_portion=0.2, val_portion=0.2):
+    print("in split")
     df = pd.read_csv('./ptbxl_database.csv')
     df.labels = df.labels.apply(lambda x: ast.literal_eval(x))
     if classification == 'multi-class':
