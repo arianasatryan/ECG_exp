@@ -23,6 +23,7 @@ class DataGenerator(Sequence):
     def __init__(self, x_df, y_labels, source, batch_size=32, needed_length=5000,
                  pad_mode='constant', norm_by=True):
         self.x, self.y = x_df, y_labels
+        self.is_artefact = np.array([True] * self.x.shape[0], dtype=bool)
         self.batch_size = batch_size
         self.source = source
         self.needed_length = needed_length
@@ -30,6 +31,9 @@ class DataGenerator(Sequence):
         self.norm_by = norm_by
         if self.source == 'both':
             self.x, self.y = shuffle(x_df, y_labels, random_state=SEED)
+
+    def get_labels(self):
+        return np.array([label for label, is_artefact in zip(self.y, self.is_artefact) if not is_artefact])
 
     def __len__(self):
         return ceil(len(self.x) / self.batch_size)
@@ -45,6 +49,7 @@ class DataGenerator(Sequence):
             is_artefact = [np.isnan(np.min(record)) for record in ptb_records]
             order = [list(df_batch.index)[i] for i in range(len(df_batch.index)) if not is_artefact[i]]
             x_batch = np.array([ptb_records[i] for i in range(len(ptb_records)) if not is_artefact[i]])
+            self.is_artefact[order] = False
             y_batch = self.y[order]
 
         elif self.source == 'tis':
@@ -54,6 +59,7 @@ class DataGenerator(Sequence):
             is_artefact = [artefact_check(record) for record in tis_records]
             order = [list(df_batch.index)[i] for i in range(len(df_batch.index)) if not is_artefact[i]]
             x_batch = np.array([tis_records[i] for i in range(len(tis_records)) if not is_artefact[i]])
+            self.is_artefact[order] = False
             y_batch = self.y[order]
 
         elif self.source == 'both':
@@ -75,6 +81,7 @@ class DataGenerator(Sequence):
 
             x_batch = np.concatenate([ptb_records, tis_records], axis=0)
             order = ptb_indx + tis_indx
+            self.is_artefact[order] = False
             y_batch = self.y[order]
         return x_batch, y_batch
 
@@ -88,7 +95,6 @@ def artefact_check(record):
     record = record.transpose()
     for lead in record:
         if len(set(lead)) == 1:
-            print(lead)
             return True
     return False
 
@@ -172,7 +178,6 @@ def get_tis_data_split(classification='multi-class', test_portion=0.2, val_porti
 
 
 def get_ptb_data_split(classification='multi-class', test_portion=0.2, val_portion=0.2):
-    print("in split")
     df = pd.read_csv('./ptbxl_database.csv')
     df.labels = df.labels.apply(lambda x: ast.literal_eval(x))
     if classification == 'multi-class':

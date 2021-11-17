@@ -4,7 +4,7 @@ from sklearn.metrics import accuracy_score, recall_score, f1_score, precision_sc
 import numpy as np
 import json
 import pickle
-from load_data import config, get_data_generators
+from load_data import config, get_tis_data_split, get_ptb_data_split, DataGenerator
 
 classification_type = config['classification_type']
 experiment_name = f"{classification_type}_{config['experiment_name']}"
@@ -13,12 +13,18 @@ experiment_name = f"{classification_type}_{config['experiment_name']}"
 def predict():
     model_path = config["path_to_multi_class_model"] if classification_type == 'multi-class' \
         else config["path_to_multi_label_model"]
-    _, _, test_gen, _ = get_data_generators(classification_type=classification_type,
-                                            return_weights=True, data_source='both',
-                                            batch_size=32, needed_length=5000, pad_mode='constant')
+    _, _, test_df_tis, _, _, y_test_labels_tis = get_tis_data_split(classification_type)
+    _, _, test_df_ptb, _, _, y_test_labels_ptb = get_ptb_data_split(classification_type)
+
+    test_df = pd.concat([test_df_tis, test_df_ptb], axis=0, ignore_index=True, sort=False)
+    y_test_labels = np.concatenate([y_test_labels_tis, y_test_labels_ptb], axis=0)
+
+    test_gen = DataGenerator(test_df, y_test_labels, source='both', batch_size=config['training']['batch_size'])
 
     model = load_model(model_path, compile=False)
     y_pred = model.predict(test_gen)
+    y_test_labels = test_gen.get_labels()
+
     y_test_labels = np.argmax(y_test_labels, axis=1) if classification_type == 'multi-class' else y_test_labels
     y_pred_labels = np.argmax(y_pred, axis=1) if classification_type == 'multi-class' else preprocessing(y_pred)
 
@@ -28,7 +34,7 @@ def predict():
 
     return y_pred
 
-predict()
+
 def get_metrics(y_test, y_pred, classification='multi-class'):
     label_names = config['labels']
     if classification == 'multi-class':
@@ -57,3 +63,5 @@ def preprocessing(y_pred):
         y_pred_labels.append(pred_label)
     return np.array(y_pred_labels)
 
+
+predict()
