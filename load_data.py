@@ -14,14 +14,20 @@ from sklearn.utils import shuffle
 
 with open('config.json', 'r')as fin:
     config = json.load(fin)
-
+    
+data_config = config['data_config']
+training_config = config['training_config']
+    
 SEED = 1
 
 
 class DataGenerator(Sequence):
 
-    def __init__(self, x_df, y_labels, source, batch_size=32, needed_length=5000,
-                 pad_mode='constant', norm_by=True):
+    def __init__(self, x_df, y_labels, source, 
+                 batch_size=training_config['batch_size'], 
+                 needed_length=data_config['points'],
+                 pad_mode=data_config['pad_mode'], 
+                 norm_by=data_config['norm_by']):
         self.x, self.y = x_df, y_labels
         self.is_artefact = np.array([True] * self.x.shape[0], dtype=bool)
         self.batch_size = batch_size
@@ -86,9 +92,10 @@ class DataGenerator(Sequence):
         return x_batch, y_batch
 
 
-def normalize(arr, lead_number, source_lead_min_max_config):
-    (lead_min, lead_max) = source_lead_min_max_config[lead_number]
-    return (arr-lead_min)/(lead_max-lead_min)
+def normalize(norm_by, arr, lead_number, source_lead_min_max_config):
+    if norm_by == 'global_min_max':
+        (lead_min, lead_max) = source_lead_min_max_config[lead_number]
+        return (arr-lead_min)/(lead_max-lead_min)
 
 
 def artefact_check(record):
@@ -101,9 +108,9 @@ def artefact_check(record):
 
 def load_raw_data_ptb(df, needed_length, pad_mode, norm_by):
     path = config['ptb_path']
-    if config['sampling_rate'] == 100:
+    if data_config['sampling_rate'] == 100:
         data = [wfdb.rdsamp(path + f)[0] for f in df.filename_lr]
-    elif config['sampling_rate'] == 500:
+    elif data_config['sampling_rate'] == 500:
         data = [wfdb.rdsamp(path + f)[0] for f in df.filename_hr]
 
     data = np.array(data).transpose(0, 2, 1)
@@ -115,7 +122,8 @@ def load_raw_data_ptb(df, needed_length, pad_mode, norm_by):
         for ecg in data:
             norm_ecg = []
             for i, lead_data in enumerate(ecg):
-                norm_ecg.append(normalize(lead_data[:len_], i, config['ptb_lead_min_max']))
+                norm_ecg.append(normalize(norm_by, lead_data[:len_], i,
+                                          data_config['normalization_params'][norm_by]['ptb_lead_min_max']))
             normalized_data.append(norm_ecg)
         data = np.array(normalized_data)
 
@@ -138,12 +146,13 @@ def load_raw_data_tis(df, needed_length, pad_mode, norm_by):
         row_data = []
         file_df = pd.read_csv(zf.open(files[i]), skiprows=10, sep=',')
         file_df.columns = file_df.columns.str.strip()
-        for j, lead in enumerate(config['leads_order']):
+        for j, lead in enumerate(file_df.columns):
             len_ = min(len(file_df[lead]), needed_length)
             lead_data = np.array(file_df[lead][:len_])
             if norm_by:
                 # normalization
-                lead_data = normalize(lead_data, j, config['tis_lead_min_max'])
+                lead_data = normalize(norm_by, lead_data, j, 
+                                      data_config['normalization_params'][norm_by]['tis_lead_min_max'])
             if len_ < needed_length:
                 # padding
                 lead_data = np.pad(lead_data, (0, needed_length - lead_data.shape[0]), mode=pad_mode)

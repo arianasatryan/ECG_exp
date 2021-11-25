@@ -1,8 +1,8 @@
 from tensorflow.keras.layers import (
     Input, Conv1D, MaxPooling1D, Dropout, BatchNormalization, Activation, Add, Flatten, Dense)
 from tensorflow.keras.models import Model
+from load_data import data_config
 import numpy as np
-import tensorflow as tf
 
 
 class ResidualUnit(object):
@@ -116,7 +116,7 @@ class ResidualUnit(object):
 def get_model(n_classes, last_layer='softmax'):
     kernel_size = 16
     kernel_initializer = 'he_normal'
-    signal = Input(shape=(5000, 12), dtype=np.float32, name='signal')
+    signal = Input(shape=(data_config['points'], 12), dtype=np.float32, name='signal')
     x = signal
     x = Conv1D(64, kernel_size, padding='same', use_bias=False,
                kernel_initializer=kernel_initializer)(x)
