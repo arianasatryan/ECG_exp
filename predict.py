@@ -1,12 +1,13 @@
-from tensorflow.keras.models import load_model
-from sklearn.metrics import accuracy_score, recall_score, f1_score, precision_score, \
-    classification_report, confusion_matrix
-import numpy as np
-import pandas as pd
 import os
 import json
 import pickle
+import numpy as np
+import pandas as pd
+from tensorflow.keras.models import load_model
 from load_data import config, get_tis_data_split, get_ptb_data_split, DataGenerator
+from sklearn.metrics import accuracy_score, recall_score, f1_score, precision_score, \
+    classification_report, confusion_matrix
+
 
 train_config = config["training_config"]
 classification_type = config["classification_type"]
@@ -85,6 +86,3 @@ def preprocessing(y_pred):
             pred_label.append(label)
         y_pred_labels.append(pred_label)
     return np.array(y_pred_labels)
-
-
-predict()

@@ -1,14 +1,13 @@
 import os
 import json
-import pandas as pd
 import numpy as np
+import pandas as pd
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import (ModelCheckpoint, TensorBoard, ReduceLROnPlateau,
-                                        CSVLogger, EarlyStopping)
+from tensorflow.keras.callbacks import (ModelCheckpoint, TensorBoard, ReduceLROnPlateau, CSVLogger, EarlyStopping)
 from tensorflow.keras.metrics import Accuracy, Recall, Precision
-from model import get_model
 from load_data import config, get_tis_data_split, get_ptb_data_split, DataGenerator
 from generate_class_weights import generate_class_weights
+from model import get_model
 
 train_config = config["training_config"]
 classification_type = config["classification_type"]
@@ -27,7 +26,6 @@ def train_model():
                                    patience=7,
                                    min_lr=train_config["lr"] / 100),
                  EarlyStopping(patience=9,  # Patience should be larger than the one in ReduceLROnPlateau
-
                                min_delta=0.00001)]
 
     # load data generator
@@ -91,5 +89,3 @@ def save_model_info():
     
     with open(os.path.dirname(os.path.abspath(config["path_to_model"])) + '/model_info.json', 'w+') as fout:
         json.dump(model_info, fout, indent=4, default=str)
-
-train_model()

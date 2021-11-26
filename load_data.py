@@ -1,16 +1,16 @@
-import pandas as pd
-import numpy as np
-import wfdb
-import ast
+import os
 import json
 import math
-import os
+import ast
+import wfdb
 import zipfile
+import numpy as np
+import pandas as pd
+from sklearn.utils import shuffle
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.utils import Sequence
-from math import ceil
-from sklearn.utils import shuffle
+
 
 with open('config.json', 'r')as fin:
     config = json.load(fin)
@@ -42,7 +42,7 @@ class DataGenerator(Sequence):
         return np.array([label for label, is_artefact in zip(self.y, self.is_artefact) if not is_artefact])
 
     def __len__(self):
-        return ceil(len(self.x) / self.batch_size)
+        return math.ceil(len(self.x) / self.batch_size)
 
     def __getitem__(self, idx):
         end = min(self.x.shape[0], (idx + 1) * self.batch_size)
@@ -253,7 +253,6 @@ def save_filtered():
     i = 1
     info = []
     for file in files:
-        print(i)
         file_df = pd.read_csv(config['tis_path'] + file, nrows=5, sep=':')
         if int(file_df.iloc[0][1]) == config['sampling_rate']:
             tis_codes = ast.literal_eval(file_df.iloc[4][1].strip())

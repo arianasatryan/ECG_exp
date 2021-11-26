@@ -3,12 +3,13 @@ from sklearn.metrics import cohen_kappa_score
 from sklearn.preprocessing import MultiLabelBinarizer
 from itertools import combinations
 
-states_path = '/home/ariana/Downloads/ECG-states.csv'
-reports_path = '/home/ariana/Downloads/reports.xls'
+states_path = 'path/to/ECG-states.csv'
+reports_path = 'path/to/reports.xls'
 
 all_labels = list(set(list(pd.read_csv(states_path)['Код в SCP'])))
 mlt = MultiLabelBinarizer(classes=all_labels)
 labels_order = {label: i for i, label in enumerate(all_labels)}
+
 
 def get_pair_report(reports_df, username1, username2):
     pair_report = reports_df[reports_df['username'].isin([username1, username2])]
@@ -58,7 +59,7 @@ for user1, user2 in user_pairs:
 rep_df = pd.DataFrame.from_dict(user_pair_agreements)
 rep_df = rep_df.dropna(how='all', axis=0)
 rep_df = rep_df.dropna(how='all', axis=1)
-#rep_df = rep_df.sort_values(by='_'.join(user_pairs[0]), ascending=False)
+rep_df = rep_df.sort_values(by='_'.join(user_pairs[0]), ascending=False)
 rep_df.to_csv("cohen's_kappa_scores.csv")
 
 
