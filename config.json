@@ -3,11 +3,11 @@
     "tis_path": "path/to/technion_ecg_data.zip",
     "pathology_mapping_file": "/path/to/pathology_mapping.csv",
     "path_to_model": "path/to/model.hdf5",
-    "labels": ["1AVB", "CRBBB", "CLBBB", "STACH", "SBRAD", "AFIB"],
-    "classification_type": "multi-class",
+    "labels": ["AFIB", "nAFIB"],
+    "classification_type": "binary",
     "test_experiment_name": "test_experiment_name",
     "training_config": {
-        "loss": "categorical_crossentropy",
+        "loss": "binary_crossentropy",
         "lr": 0.001,
         "batch_size": 32,
         "epochs": 30

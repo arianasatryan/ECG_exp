@@ -165,20 +165,23 @@ def load_raw_data_tis(df, needed_length, pad_mode, norm_by):
 
 def get_tis_data_split(classification='multi-class', test_portion=0.2, val_portion=0.2):
     df = pd.read_csv('./tis_database.csv')
-    df.ptb_labels = df.ptb_labels.apply(lambda x: ast.literal_eval(x))
+    if classification == 'binary':
+        df.labels = pd.Series([[label] for label in df.labels])
+    else:
+        df.labels = df.labels.apply(lambda x: ast.literal_eval(x))
     if classification == 'multi-class':
-        df = df[df['ptb_labels'].apply(lambda x:len(x) == 1)]
+        df = df[df['labels'].apply(lambda x:len(x) == 1)]
     elif classification == 'multi-label':
-        df = df[df['ptb_labels'].apply(lambda x:len(x) >= 1)]
+        df = df[df['labels'].apply(lambda x:len(x) >= 1)]
 
     train_df, test_df = train_test_split(df, test_size=test_portion, random_state=SEED)
     train_df, val_df = train_test_split(train_df, test_size=val_portion, random_state=SEED)
 
     # one-hot encoding labels
     mlb = MultiLabelBinarizer(classes=config['labels'])
-    y_train_labels = mlb.fit_transform(train_df.ptb_labels)
-    y_val_labels = mlb.fit_transform(val_df.ptb_labels)
-    y_test_labels = mlb.fit_transform(test_df.ptb_labels)
+    y_train_labels = mlb.fit_transform(train_df.labels)
+    y_val_labels = mlb.fit_transform(val_df.labels)
+    y_test_labels = mlb.fit_transform(test_df.labels)
 
     train_df = train_df.reset_index(drop=True)
     val_df = val_df.reset_index(drop=True)
@@ -188,7 +191,10 @@ def get_tis_data_split(classification='multi-class', test_portion=0.2, val_porti
 
 def get_ptb_data_split(classification='multi-class', test_portion=0.2, val_portion=0.2):
     df = pd.read_csv('./ptbxl_database.csv')
-    df.labels = df.labels.apply(lambda x: ast.literal_eval(x))
+    if classification == 'binary':
+        df.labels = pd.Series([[label]for label in df.labels])
+    else:
+        df.labels = df.labels.apply(lambda x: ast.literal_eval(x))
     if classification == 'multi-class':
         df = df[df['labels'].apply(lambda x: len(x) == 1)]
     elif classification == 'multi-label':
@@ -246,11 +252,11 @@ def save_filtered():
     Y.scp_codes = Y.scp_codes.apply(lambda x: ast.literal_eval(x))
     Y['labels'] = Y.scp_codes.apply(lambda x: [key for key in x.keys() if key in config['labels']])
     Y = Y[Y['labels'].apply(lambda x: len(x) != 0)]
+    Y['source'] = 'ptb'
     Y.to_csv('./ptbxl_database.csv', index=False)
 
     # filter tis
     files = [file for file in os.listdir(config['tis_path'])if file.endswith('.csv')]
-    i = 1
     info = []
     for file in files:
         file_df = pd.read_csv(config['tis_path'] + file, nrows=5, sep=':')
@@ -259,7 +265,6 @@ def save_filtered():
             ptb_labels = map_labels(tis_codes, source='tis')
             ptb_labels = [key for key in ptb_labels if key in config['labels']]
             if ptb_labels:
-                info.append({'filename': file, 'ptb_labels': ptb_labels, 'tis_codes': tis_codes})
-        i += 1
+                info.append({'filename': file, 'labels': ptb_labels, 'tis_codes': tis_codes, 'source': 'tis'})
     Y = pd.DataFrame(info)
     Y.to_csv('./tis_database.csv', index=False)
