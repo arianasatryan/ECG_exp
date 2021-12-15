@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import (ModelCheckpoint, TensorBoard, ReduceLROnPlateau, CSVLogger, EarlyStopping)
-from tensorflow.keras.metrics import Accuracy, Recall, Precision
+from tensorflow.keras.models import load_model
 from load_data import config, get_tis_data_split, get_ptb_data_split, DataGenerator
 from generate_class_weights import generate_class_weights
 from model import get_model
@@ -30,29 +30,31 @@ def train_model():
 
     # load data generator
     if data_source != 'both':
-        train_df, val_df, _, y_train_labels, y_val_labels, _ = data_split_func[data_source](classification_type)
+        train_df, val_df, _ = data_split_func[data_source](classification_type)
 
     else:
-        train_df_tis, val_df_tis, _, y_train_labels_tis, y_val_labels_tis, _ = data_split_func['tis'](classification_type)
-        train_df_ptb, val_df_ptb, _, y_train_labels_ptb, y_val_labels_ptb, _ = data_split_func['ptb'](classification_type)
+        train_df_tis, val_df_tis, _ = data_split_func['tis'](classification_type)
+        train_df_ptb, val_df_ptb, _ = data_split_func['ptb'](classification_type)
 
         train_df = pd.concat([train_df_tis, train_df_ptb], axis=0, ignore_index=True, sort=False)
-        y_train_labels = np.concatenate([y_train_labels_tis, y_train_labels_ptb], axis=0)
-
         val_df = pd.concat([val_df_tis, val_df_ptb], axis=0, ignore_index=True, sort=False)
-        y_val_labels = np.concatenate([y_val_labels_tis, y_val_labels_ptb], axis=0)
 
-    train_gen = DataGenerator(x_df=train_df, y_labels=y_train_labels, source=data_source)
-    val_gen = DataGenerator(x_df=val_df, y_labels=y_val_labels, source=data_source)
+    train_gen = DataGenerator(x_df=train_df, source=data_source)
+    val_gen = DataGenerator(x_df=val_df, source=data_source)
 
     # If you are continuing an interrupted section, uncomment line bellow:
     #   model = keras.models.load_model(PATH_TO_PREV_MODEL, compile=False)
     activation_func = 'softmax' if classification_type == 'multi-class' else 'sigmoid'
     multi_class = True if classification_type == 'multi-class' else False
+    y_train_labels = train_gen.get_labels()
     class_weights = generate_class_weights(y_train_labels, multi_class=multi_class, one_hot_encoded=True)
 
-    model = get_model(len(config["labels"]), activation_func)
-    model.compile(loss=train_config["loss"], optimizer=optimizer, metrics=[Accuracy(), Recall(), Precision()])
+    # use this to train from the beginning
+    #model = get_model(len(config["labels"]), activation_func)
+    #model.compile(loss=train_config["loss"], optimizer=optimizer, metrics=[Accuracy(), Recall(), Precision()])
+
+    # use this to continue training
+    model = load_model(config["path_to_model"], compile=True)
 
     # Create log
     if not os.path.exists('./results'):
@@ -68,12 +70,12 @@ def train_model():
     history = model.fit(train_gen,
                         validation_data=val_gen,
                         epochs=train_config["epochs"],
-                        initial_epoch=0,  # If you are continuing a interrupted section change here
+                        initial_epoch=0,  # If you are continuing an interrupted section change here
                         class_weight=class_weights,
                         callbacks=callbacks,
                         verbose=1)
     # Save final result
-    model.save(f'{config["path_to_model"]}')
+    model.save(f'{config["path_to_model"]}', include_optimizer=True)
     save_model_info()
 
 
@@ -89,3 +91,5 @@ def save_model_info():
     
     with open(os.path.dirname(os.path.abspath(config["path_to_model"])) + '/model_info.json', 'w+') as fout:
         json.dump(model_info, fout, indent=4, default=str)
+
+train_model()
