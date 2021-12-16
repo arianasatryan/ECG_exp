@@ -48,8 +48,8 @@ def predict():
     if not os.path.exists('./results/quality/'):
         os.makedirs('./results/quality/')
 
-    y_test_labels = np.argmax(y_test_labels, axis=1) if classification_type == 'binary' else y_test_labels
-    y_pred_labels = np.argmax(y_pred, axis=1) if classification_type == 'binary' else preprocessing(y_pred)
+    y_test_labels = np.argmax(y_test_labels, axis=1) if classification_type != 'multi-label' else y_test_labels
+    y_pred_labels = np.argmax(y_pred, axis=1) if classification_type != 'multi-label' else preprocessing(y_pred)
 
     metrics = get_metrics(y_test_labels, y_pred_labels, classification_type)
     with open('./results/quality/{}_quality.json'.format(experiment_name), 'w') as f:
@@ -59,7 +59,6 @@ def predict():
 
 
 def get_metrics(y_test, y_pred, classification='multi-class'):
-
     label_names = config['labels']
     if classification != 'multi-label':
         conf_matrix = confusion_matrix(y_test, y_pred)

@@ -23,6 +23,7 @@ SEED = 1
 class DataGenerator(Sequence):
 
     def __init__(self, x_df, source,
+                 classification_type=config['classification_type'],
                  batch_size=training_config['batch_size'],
                  needed_length=data_config['points'],
                  pad_mode=data_config['pad_mode'],
@@ -37,6 +38,10 @@ class DataGenerator(Sequence):
         self.x = x_df
         if self.source == 'both':
             self.x = shuffle(x_df, random_state=SEED)
+        if classification_type == 'multi-class':
+            self.x = self.x[self.x['labels'].apply(lambda x: len(x) == 1)]
+        elif classification_type == 'multi-label':
+            self.x = self.x[self.x['labels'].apply(lambda x: len(x) >= 1)]
         self.x = self.x.reset_index()
 
         self.is_artefact = np.array([True] * self.x.shape[0], dtype=bool)
