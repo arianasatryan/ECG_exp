@@ -6,45 +6,63 @@ import wfdb
 import zipfile
 import numpy as np
 import pandas as pd
-from sklearn.utils import shuffle
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.utils import Sequence
+from statistics import mean
 
 with open('config.json', 'r') as fin:
     config = json.load(fin)
 
 data_config = config['data_config']
 training_config = config['training_config']
+data_source_df = data_config['source_df']
 
-SEED = 1
+SEED = config["SEED"]
+
+
+def load_info_df(classification=config['classification_type'], train_or_test='train'):
+    print(data_config['source'], train_or_test)
+    df = pd.read_csv(data_source_df[data_config['source']][train_or_test])
+    df = df[df['sampling_rate'] == data_config['sampling_rate']]
+
+    if classification == 'binary':
+        df.labels = df.labels.apply(lambda x: [x])
+    else:
+        df = df.drop('labels', axis=1)
+        df = df.rename(columns={"multilabels": "labels"})
+        df.labels = df.labels.apply(lambda x: ast.literal_eval(x))
+    if classification == 'multi-class':
+        df = df[df['labels'].apply(lambda x: len(x) == 1)]
+    elif classification == 'multi-label':
+        df = df[df['labels'].apply(lambda x: len(x) >= 1)]
+    return df
 
 
 class DataGenerator(Sequence):
 
-    def __init__(self, x_df, source,
-                 classification_type=config['classification_type'],
+    def __init__(self, x_df, source=data_config['source'],
                  batch_size=training_config['batch_size'],
                  needed_length=data_config['points'],
                  pad_mode=data_config['pad_mode'],
-                 norm_by=data_config['norm_by']):
+                 scale_by=data_config['scale_by'],
+                 resample=data_config['resample'],
+                 sampling_rate=data_config['sampling_rate']):
 
         self.batch_size = batch_size
         self.source = source
         self.needed_length = needed_length
         self.pad_mode = pad_mode
-        self.norm_by = norm_by
+        self.scale_by = scale_by
+        self.sampling_rate = sampling_rate
+        self.resample = resample
 
         self.x = x_df
+        self.x = self.x.reset_index(drop=True)
+    
         if self.source == 'both':
-            self.x = shuffle(x_df, random_state=SEED)
-        if classification_type == 'multi-class':
-            self.x = self.x[self.x['labels'].apply(lambda x: len(x) == 1)]
-        elif classification_type == 'multi-label':
-            self.x = self.x[self.x['labels'].apply(lambda x: len(x) >= 1)]
-        self.x = self.x.reset_index()
+            self.x = self.x.sample(frac=1, random_state=SEED).reset_index(drop=True)
 
-        self.is_artefact = np.array([True] * self.x.shape[0], dtype=bool)
         self.mlb = MultiLabelBinarizer(classes=config['labels'])
         self.y = []
 
@@ -54,150 +72,124 @@ class DataGenerator(Sequence):
     def __len__(self):
         return math.ceil(len(self.x) / self.batch_size)
 
+    def _load_raw_data_ptb(self, df_batch):
+        path = config['ptb_path']
+        if self.sampling_rate == 100:
+            data = [wfdb.rdsamp(path + f)[0] for f in df_batch.filename]
+        elif self.sampling_rate == 500:
+            data = [wfdb.rdsamp(path + f)[0] for f in df_batch.filename]
+
+        data = np.array(data).transpose(0, 2, 1)
+        X, Y = [], []
+        for record, labels, sampling_rate in zip(data, df_batch.labels):
+            preprocessed_record, is_artefact = self._preprocess(record, self.sampling_rate, 'ptb')
+            if not is_artefact:
+                X.append(preprocessed_record)
+                Y.append(labels)
+        return np.array(X), np.array(Y)
+
+    def _load_raw_data_tis(self, df_batch):
+        # considering that all the files in df are sampled as config['sampling_rate']
+        leads = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6']
+        zf = zipfile.ZipFile(config['tis_path'])
+        folder = [name for name in zf.namelist() if name.endswith('/')][0]
+        X, Y = [], []
+        for filename, labels, sampling_rate in zip(list(df_batch.filename),
+                                                   list(df_batch.labels),
+                                                   list(df_batch.sampling_rate)):
+            df = pd.read_csv(zf.open(folder+filename), sep='\n', header=None)
+            ecg_rec_start = df[df.columns[0]].apply(lambda x: all(lead in x for lead in leads))
+            ecg_rec_start = ecg_rec_start[ecg_rec_start].index.tolist()[0]
+
+            record = pd.read_csv(zf.open(folder+filename), skiprows=ecg_rec_start, sep=',').transpose().to_numpy()
+            preprocessed_record, is_artefact = self._preprocess(record, sampling_rate, 'tis')
+            if not is_artefact:
+                X.append(preprocessed_record)
+                Y.append(labels)
+        return np.stack(X), np.asarray(Y)
+
+    def _scale(self, arr, lead_number, source):
+        target = 'ptb' if source == 'tis' else 'tis'
+        if self.scale_by == 'global_min_max':
+            source_lead_min_max_config = data_config['scale_params']['global_min_max'][f'{source}_lead_min_max']
+            (lead_min, lead_max) = source_lead_min_max_config[lead_number]
+            X_std = (arr - lead_min) / (lead_max - lead_min)
+
+            target_lead_min_max_config = data_config['scale_params']['global_min_max'][f'{target}_lead_min_max']
+            (lead_min, lead_max) = target_lead_min_max_config[lead_number]
+            X_scaled = X_std * (lead_max - lead_min) + lead_min
+        return X_scaled
+
+    def _preprocess(self, ecg_record, sampling_rate, source):
+        is_artefact = False
+        row_data = []
+        for j, lead_data in enumerate(ecg_record):
+            if len(set(lead_data.shape)) == 0:
+                # check artefact
+                is_artefact = True
+                break
+
+            if self.resample and sampling_rate != data_config['sampling_rate']:
+                # resampling
+                step = int(sampling_rate / data_config['sampling_rate'])
+                lead_data = [int(mean(lead_data[i: i + step])) for i in range(0, len(lead_data) - 1, step)]
+
+            if self.scale_by:
+                # normalization
+                lead_data = self._scale(lead_data, j, source)
+
+            len_ = min(len(lead_data), self.needed_length)
+            lead_data = lead_data[:len_]
+            if len(lead_data) < self.needed_length:
+                # padding
+                lead_data = np.pad(lead_data, (0, self.needed_length - lead_data.shape[0]), mode=self.pad_mode)
+
+            row_data.append(lead_data)
+
+        if not is_artefact:
+            row_data = np.stack(row_data, axis=0)
+            row_data = np.transpose(row_data)
+        return row_data, is_artefact
+
     def __getitem__(self, idx):
         end = min(self.x.shape[0], (idx + 1) * self.batch_size)
         df_batch = self.x[idx * self.batch_size:end]
 
         if self.source == 'ptb':
-            records, labels = load_raw_data_ptb(df_batch, needed_length=self.needed_length,
-                                                pad_mode=self.pad_mode, norm_by=False)
+            X, Y = self._load_raw_data_ptb(df_batch)
+
         elif self.source == 'tis':
-            records, labels = load_raw_data_tis(df_batch, needed_length=self.needed_length,
-                                                pad_mode=self.pad_mode, norm_by=self.norm_by)
-        else:
-            ptb_df = df_batch[df_batch['tis_codes'].isnull()]
-            tis_df = df_batch[~df_batch['tis_codes'].isnull()]
-            ptb_records, ptb_labels = load_raw_data_ptb(ptb_df, needed_length=self.needed_length,
-                                                        pad_mode=self.pad_mode, norm_by=False)
-            tis_records, tis_labels = load_raw_data_tis(tis_df, needed_length=self.needed_length,
-                                                        pad_mode=self.pad_mode, norm_by=self.norm_by)
-            records = np.concatenate((ptb_records, tis_records))
-            labels = np.concatenate((ptb_labels, tis_labels))
+            X, Y = self._load_raw_data_tis(df_batch)
+            
+        elif self.source == 'both':
+            X, Y = self._load_raw_data_tis(df_batch[df_batch['source'] == 'tis'])
+            X1, Y1 = self._load_raw_data_ptb(df_batch[df_batch['source'] == 'ptb'])
+            X.extend(X1)
+            Y.extend(Y1)
 
-        x_batch = []
-        y_batch = []
-        for record, label in zip(records, labels):
-            if not artefact_check(record):
-                x_batch.append(record)
-                y_batch.append(label)
-        x_batch = np.array(x_batch)
-        y_batch = np.array(y_batch)
-        y_batch = self.mlb.fit_transform(y_batch)
-        self.y.extend(y_batch)
-        return x_batch, y_batch
-
-
-def normalize(norm_by, arr, lead_number):
-    if norm_by == 'global_min_max':
-        source_lead_min_max_config = config['data_config']['normalization_params']['global_min_max']['tis_lead_min_max']
-
-        if config['used_norm'] == 'new_global':
-            (lead_min, lead_max) = source_lead_min_max_config[lead_number]
-            X_std = (arr - lead_min) / (lead_max - lead_min)
-
-        if config['used_norm'] == 'new_local':
-            X_std = (arr - min(arr)) / (max(arr) - min(arr))
-
-        target_lead_min_max_config = config['data_config']['normalization_params']['global_min_max']['ptb_lead_min_max']
-        (lead_min, lead_max) = target_lead_min_max_config[lead_number]
-        X_scaled = X_std * (lead_max - lead_min) + lead_min
-        return X_scaled
-
-
-def artefact_check(record):
-    record = record.transpose()
-    for lead in record:
-        if len(set(lead)) == 1:
-            return True
-    return False
-
-
-def load_raw_data_ptb(df, needed_length, pad_mode, norm_by):
-    path = config['ptb_path']
-    if data_config['sampling_rate'] == 100:
-        data = [wfdb.rdsamp(path + f)[0] for f in df.filename_lr]
-    elif data_config['sampling_rate'] == 500:
-        data = [wfdb.rdsamp(path + f)[0] for f in df.filename_hr]
-
-    data = np.array(data).transpose(0, 2, 1)
-    len_ = min(len(data[0][0]), needed_length)
-
-    if norm_by:
-        # normalization
-        normalized_data = []
-        for ecg in data:
-            norm_ecg = []
-            for i, lead_data in enumerate(ecg):
-                norm_ecg.append(normalize(norm_by, lead_data[:len_], i))
-            normalized_data.append(norm_ecg)
-        data = np.array(normalized_data)
-
-    data = np.array(data).transpose(0, 2, 1)
-
-    if len_ < needed_length:
-        # padding
-        npad = [(0, 0)] * data[0].ndim
-        npad[0] = (0, needed_length - len_)
-        data = np.array([np.pad(ecg_rec, pad_width=npad, mode=pad_mode) for ecg_rec in data])
-    return data, df.labels
-
-
-def load_raw_data_tis(df, needed_length, pad_mode, norm_by):
-    # considering that all the files in df are sampled as config['sampling_rate']
-    zf = zipfile.ZipFile(config['tis_path'])
-    files = ['technion_ecg_data/'+file for file in list(df.filename) if file.endswith('.csv')]
-    X = []
-    for i in range(len(files)):
-        row_data = []
-        file_df = pd.read_csv(zf.open(files[i]), skiprows=10, sep=',')
-        file_df.columns = file_df.columns.str.strip()
-        for j, lead in enumerate(file_df.columns):
-            len_ = min(len(file_df[lead]), needed_length)
-            lead_data = np.array(file_df[lead][:len_])
-            if norm_by:
-                # normalization
-                lead_data = normalize(norm_by, lead_data, j)
-            if len_ < needed_length:
-                # padding
-                lead_data = np.pad(lead_data, (0, needed_length - lead_data.shape[0]), mode=pad_mode)
-            row_data.append(lead_data)
-        row_data = np.stack(row_data, axis=0)
-        row_data = np.transpose(row_data)
-        X.append(row_data)
-    return np.array(X), df.labels
+        Y = self.mlb.fit_transform(Y)
+        self.y.extend(Y)
+        return X, Y
 
 
 def get_tis_data_split(classification='multi-class', test_portion=0.2, val_portion=0.2):
-    df = pd.read_csv('./tis_database.csv')
-    if classification == 'binary':
-        df.labels = pd.Series([[label] for label in df.labels])
-    else:
-        df.labels = df.labels.apply(lambda x: ast.literal_eval(x))
-    if classification == 'multi-class':
-        df = df[df['labels'].apply(lambda x: len(x) == 1)]
-    elif classification == 'multi-label':
-        df = df[df['labels'].apply(lambda x: len(x) >= 1)]
+    train_df = load_info_df(classification)
+    val_df, test_df = None, None
 
-    train_df, test_df = train_test_split(df, test_size=test_portion, random_state=SEED)
-    train_df, val_df = train_test_split(train_df, test_size=val_portion, random_state=SEED)
+    if test_portion is not None:
+        train_df, test_df = train_test_split(train_df, test_size=test_portion, random_state=SEED)
+        test_df = test_df.reset_index(drop=True)
+
+    if val_portion is not None:
+        train_df, val_df = train_test_split(train_df, test_size=val_portion, random_state=SEED)
+        val_df = val_df.reset_index(drop=True)
 
     train_df = train_df.reset_index(drop=True)
-    val_df = val_df.reset_index(drop=True)
-    test_df = test_df.reset_index(drop=True)
     return train_df, val_df, test_df
 
 
 def get_ptb_data_split(classification='multi-class', test_portion=0.2, val_portion=0.2):
-    df = pd.read_csv('./ptbxl_database.csv')
-    if classification == 'binary':
-        df.labels = pd.Series([[label] for label in df.labels])
-    else:
-        df.labels = df.labels.apply(lambda x: ast.literal_eval(x))
-    if classification == 'multi-class':
-        df = df[df['labels'].apply(lambda x: len(x) == 1)]
-    elif classification == 'multi-label':
-        df = df[df['labels'].apply(lambda x: len(x) >= 1)]
-
+    df = load_info_df(classification)
     trusted_folds = [9, 10]
     trusted_df = df[df['strat_fold'].isin(trusted_folds)]
     not_trusted_df = df[~df['strat_fold'].isin(trusted_folds)]

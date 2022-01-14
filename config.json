@@ -1,40 +1,45 @@
 {
-    "ptb_path": "path/to/ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.1/",
-    "tis_path": "path/to/technion_ecg_data.zip",
-    "pathology_mapping_file": "/path/to/pathology_mapping.csv",
-    "path_to_model": "path/to/model.hdf5",
-    "labels": ["AFIB", "nAFIB"],
+    "ptb_path": "./data/COLLECTED_DS/ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.1/",
+    "tis_path": "./data/COLLECTED_DS/technion_ecg_data.zip",
+    "pathology_mapping_file": "./pathology_mapping.csv",
+    "path_to_model": "./models/_.hdf5",
+    "labels": ["nCLBBB", "CLBBB"],
     "classification_type": "binary",
-    "test_experiment_name": "test_experiment_name",
+    "test_experiment_name": "_",
     "training_config": {
-        "loss": "binary_crossentropy",
         "lr": 0.001,
         "batch_size": 32,
-        "epochs": 30
+        "epochs": 1
     },
+    "SEED": 1,
     "data_config": {
-        "source": "ptb",
+        "source": "tis",
+        "source_df" : {
+            "tis": {
+                "train": "./data/CLBBB_train_filtered.csv",
+                "test": "./data/CLBBB_test.csv"
+            },
+            "ptb": {
+                "train": ""
+            }
+        },
         "sampling_rate": 500,
         "points": 5000,
+        "resample": false,
+        "scale_by": false,
         "pad_mode": "constant",
-        "norm_by": "global_min_max",
-        "normalization_params":
+        "scale_params":
         {
             "global_min_max":
             {
-                "tis_lead_min_max": [
-                    [-972.0, 2251.0], [-1285.0, 2697.0], [-1791.75, 2017.75], [-1155.75, 1838.0], [-2122.0, 921.75],
-                    [-1309.0, 2251.0], [-2774.0, 1391.0], [-3732.0, 2211.75], [-3849.0, 2838.5], [-3176.5, 3941.0],
-                    [-2355.0, 4256.0], [-1744.0, 3775.5]
-                ],
-                "ptb_lead_min_max": [
-                    [-0.47300000000000003, 1.2309999999999999], [-0.6380000000000001, 1.1785], [-1.209, 0.7915000000000001],
-                    [-1.0310000000000001, 0.4045], [-0.4995, 1.1405], [-0.792, 0.919], [-1.668, 0.7450000000000001],
-                    [-2.5680000000000005, 1.2685], [-2.395, 1.6595], [-1.6715, 2.36], [-0.9900000000000001, 2.324],
-                    [-0.6705000000000001, 1.803]
-                ]
+                "tis_lead_min_max": [[-927.0, 2231.0], [-1215.0, 2667.0], [-1695.0, 1986.0], [-2101.0, 877.0], [-1107.25, 1808.0],
+                    [-1215.0, 2238.25], [-2687.0, 1338.0], [-3587.0, 2157.0], [-3656.0, 2764.0], [-2966.25, 3858.0],
+                    [-2167.0, 4110.25], [-1608.0, 3660.0]],
+                "ptb_lead_min_max": [[-0.445, 1.2600000000000002], [-0.607, 1.2399999999999998], [-1.1720000000000002, 0.791],
+                    [-1.0815, 0.3985], [-0.48500000000000004, 1.153], [-0.74, 0.9390000000000001], [-1.617, 0.683],
+                    [-2.43, 1.2384999999999997], [-2.1585, 1.666], [-1.5284999999999997, 2.3245],
+                    [-0.8985000000000001, 2.2475000000000005], [-0.6234999999999999, 1.7510000000000001]]
             }
         }
     }
 }
-
