@@ -5,7 +5,7 @@ import seaborn as sns
 from tensorflow.keras.models import load_model
 from load_data import config, get_tis_data_split, get_ptb_data_split, DataGenerator, load_info_df
 from sklearn.metrics import accuracy_score, recall_score, f1_score, precision_score, classification_report, confusion_matrix
-
+import matplotlib.pyplot as plt
 
 SEED = config["SEED"]
 label_names = config['labels']
@@ -25,8 +25,8 @@ data_split_func = {
 def predict():
     # load data generator
     if data_source != 'both':
-        _, _, test_df = data_split_func[data_source](classification_type, 0.2, 0.2)
-        #test_df, _, _ = load_info_df(classification_type, 'test')
+        #_, _, test_df = data_split_func[data_source](classification_type, 0.2, 0.2)
+        test_df = load_info_df(classification_type, 'test')
 
     print(test_df.shape)
     print(test_df.labels.value_counts())

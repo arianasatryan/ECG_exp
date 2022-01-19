@@ -24,7 +24,9 @@ SEED = config["SEED"]
 def load_info_df(classification=config['classification_type'], train_or_test='train'):
     print(data_config['source'], train_or_test)
     df = pd.read_csv(data_source_df[data_config['source']][train_or_test])
-    df = df[df['sampling_rate'] == data_config['sampling_rate']]
+
+    if data_config['source'] == 'tis':
+        df = df[df['sampling_rate'] == data_config['sampling_rate']]
 
     if classification == 'binary':
         df.labels = df.labels.apply(lambda x: [x])
@@ -81,7 +83,7 @@ class DataGenerator(Sequence):
 
         data = np.array(data).transpose(0, 2, 1)
         X, Y = [], []
-        for record, labels, sampling_rate in zip(data, df_batch.labels):
+        for record, labels in zip(data, df_batch.labels):
             preprocessed_record, is_artefact = self._preprocess(record, self.sampling_rate, 'ptb')
             if not is_artefact:
                 X.append(preprocessed_record)
@@ -90,7 +92,6 @@ class DataGenerator(Sequence):
 
     def _load_raw_data_tis(self, df_batch):
         # considering that all the files in df are sampled as config['sampling_rate']
-        leads = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6']
         zf = zipfile.ZipFile(config['tis_path'])
         folder = [name for name in zf.namelist() if name.endswith('/')][0]
         X, Y = [], []
@@ -98,10 +99,10 @@ class DataGenerator(Sequence):
                                                    list(df_batch.labels),
                                                    list(df_batch.sampling_rate)):
             df = pd.read_csv(zf.open(folder+filename), sep='\n', header=None)
-            ecg_rec_start = df[df.columns[0]].apply(lambda x: all(lead in x for lead in leads))
+            ecg_rec_start = df[df.columns[0]].apply(lambda x: ('##############' in x))
             ecg_rec_start = ecg_rec_start[ecg_rec_start].index.tolist()[0]
 
-            record = pd.read_csv(zf.open(folder+filename), skiprows=ecg_rec_start, sep=',').transpose().to_numpy()
+            record = pd.read_csv(zf.open(folder+filename), skiprows=ecg_rec_start+1, sep=',').transpose().to_numpy()
             preprocessed_record, is_artefact = self._preprocess(record, sampling_rate, 'tis')
             if not is_artefact:
                 X.append(preprocessed_record)
